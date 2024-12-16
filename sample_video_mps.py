@@ -21,7 +21,7 @@ def add_mmgp_args(parser):
     group.add_argument(
         "--mmgp-config",
         type=str,
-        default=None,
+        default="configs/mmgp_mlx.json",
         help="Path to MMGP configuration file",
     )
     return parser
@@ -39,14 +39,13 @@ def main():
     parser = argparse.ArgumentParser(description="HunyuanVideo inference script")
     parser = add_mmgp_args(parser)
     args = parse_args(namespace=parser.parse_args([]))
-    print(args)
     
-    # Override CUDA-specific settings
-    args.precision = "fp32"  # MPS works best with fp32
-    args.use_cpu_offload = False  # CPU offload not needed for MPS
+    # Enable MMGP mode by default for M3 optimization
+    args.mmgp_mode = True
+    args.precision = "fp32"  # Use float32 for 64GB RAM
     args.vae_precision = "fp32"
     args.text_encoder_precision = "fp32"
-    args.disable_autocast = True  # Disable autocast as it's not supported on MPS
+    args.disable_autocast = True  # Disable autocast for consistent precision
     
     # Set device to MPS
     device = torch.device("mps")
@@ -60,7 +59,7 @@ def main():
     if not os.path.exists(args.save_path):
         os.makedirs(save_path, exist_ok=True)
 
-    # Load models
+    # Load models with MMGP optimization
     hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
         models_root_path, 
         args=args,
@@ -70,7 +69,7 @@ def main():
     # Get the updated args
     args = hunyuan_video_sampler.args
 
-    # Start sampling
+    # Start sampling with optimized settings
     outputs = hunyuan_video_sampler.predict(
         prompt=args.prompt, 
         height=args.video_size[0],
@@ -78,8 +77,8 @@ def main():
         video_length=args.video_length,
         seed=args.seed,
         negative_prompt=args.neg_prompt,
-        infer_steps=args.infer_steps,
-        guidance_scale=args.cfg_scale,
+        infer_steps=40,  # Optimized steps for direct 720p
+        guidance_scale=7.0,  # Balanced guidance scale
         num_videos_per_prompt=args.num_videos,
         flow_shift=args.flow_shift,
         batch_size=args.batch_size,

@@ -18,7 +18,7 @@ curl -s https://raw.githubusercontent.com/gregcmartin/HunyuanVideo_MLX/main/inst
 
 # Generate your first video
 python sample_video_mps.py \
-    --video-size 544 960 \
+    --video-size 720 1280 \
     --prompt "a cat is running, realistic." \
     --save-path ./results
 ```
@@ -32,53 +32,59 @@ python sample_video_mps.py \
   - 720p (720x1280, 1280x720, etc.)
 - **Real-time Monitoring**: Built-in resource monitoring for optimal performance
 - **Easy Setup**: Streamlined installation process for Mac users
+- **MMGP Optimization**: Mixed Model Generation Pipeline optimized for each Mac model
 
-## Hardware Requirements
+## Hardware Requirements & Optimization
 
-- **Mac**: Any Apple Silicon Mac (M1/M2/M3)
-- **OS**: macOS 12.3 or later
-- **RAM**: 
-  - Minimum: 32GB
-  - Recommended: 64GB (for 720p videos)
-- **Python**: Version 3.10 or later
+### M3 Max/Ultra with 64GB+ RAM
+- Direct 720p generation with float32 precision
+- Higher watermark ratio (0.8) for better performance
+- Batch processing enabled
+- 40 inference steps for optimal quality
+
+### Other M-series with 32GB RAM
+- Two-phase generation (540p → 720p)
+- Float16 precision for memory efficiency
+- Balanced watermark ratio (0.7)
+- Memory-efficient processing
+
+### Minimum Requirements
+- Apple Silicon Mac (M1/M2/M3)
+- macOS 12.3 or later
+- 32GB RAM minimum
+- Python 3.10 or later
 
 ## Example Configurations
 
 ```bash
-# Portrait video (9:16)
+# High-quality 720p video (M3 Max/Ultra 64GB)
+python sample_video_mps.py \
+    --video-size 720 1280 \
+    --prompt "your prompt here"
+
+# Memory-efficient 540p video (32GB RAM)
 python sample_video_mps.py \
     --video-size 544 960 \
     --prompt "your prompt here"
 
-# Landscape video (16:9)
-python sample_video_mps.py \
-    --video-size 960 544 \
-    --prompt "your prompt here"
-
-# Square video (1:1)
+# Square video
 python sample_video_mps.py \
     --video-size 720 720 \
     --prompt "your prompt here"
-
-# Advanced options
-python sample_video_mps.py \
-    --video-size 544 960 \
-    --video-length 129 \
-    --infer-steps 30 \
-    --prompt "your prompt here" \
-    --flow-reverse \
-    --embedded-cfg-scale 6.0 \
-    --save-path ./results
 ```
 
 ## Performance Tips
 
-- Use 540p resolution for faster generation and lower memory usage
+- Use appropriate settings for your Mac model (see Hardware Requirements)
 - Close memory-intensive applications before generating videos
 - Monitor system resources with `python monitor_resources.py`
 - First generation may be slower due to Metal shader compilation
 - Set memory ratio for optimal performance:
   ```bash
+  # For 64GB RAM configurations:
+  export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.8
+  
+  # For 32GB RAM configurations:
   export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7
   ```
 

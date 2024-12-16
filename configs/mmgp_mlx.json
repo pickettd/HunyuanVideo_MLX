@@ -5,16 +5,10 @@
     },
     "schedule": [
         {
-            "model": "model_540p",
-            "start_step": 0,
-            "end_step": 35,
-            "description": "Initial generation with 540p model for memory efficiency"
-        },
-        {
             "model": "model_720p",
-            "start_step": 35,
-            "end_step": 50,
-            "description": "Final refinement with 720p model for higher quality"
+            "start_step": 0,
+            "end_step": 40,
+            "description": "Direct 720p generation for M3 with 64GB RAM"
         }
     ],
     "notes": {
@@ -82,13 +76,22 @@
                     "precision": "float16"
                 }
             },
-            "M3_Max": {
+            "M3_Max_32GB": {
                 "recommendation": "Favor 720p with high efficiency",
                 "settings": {
                     "540p_steps": 20,
                     "720p_steps": 30,
                     "mps_watermark_ratio": 0.7,
                     "precision": "float16"
+                }
+            },
+            "M3_Max_64GB": {
+                "recommendation": "Direct 720p generation",
+                "settings": {
+                    "720p_steps": 40,
+                    "mps_watermark_ratio": 0.8,
+                    "precision": "float32",
+                    "batch_processing": "enabled"
                 }
             },
             "M3_Ultra": {
@@ -105,26 +108,30 @@
             "precision_options": {
                 "float16": {
                     "description": "Default precision, best balance of speed and quality",
-                    "recommended_for": ["All M-series chips"]
+                    "recommended_for": ["All M-series chips with 32GB RAM"]
                 },
                 "float32": {
-                    "description": "Higher precision, more memory usage",
-                    "recommended_for": ["M1/M2/M3 Max/Ultra with sufficient RAM"]
+                    "description": "Higher precision, better quality",
+                    "recommended_for": ["M3 Max/Ultra with 64GB+ RAM"]
                 }
             },
             "mps_settings": {
                 "high_performance": {
                     "watermark_ratio": 0.8,
-                    "suitable_for": "Lower resolution (540p) generation"
+                    "suitable_for": "64GB+ RAM configurations"
                 },
                 "balanced": {
                     "watermark_ratio": 0.7,
-                    "suitable_for": "Higher resolution (720p) generation"
+                    "suitable_for": "32GB RAM configurations"
                 }
             },
             "memory_management": {
                 "clear_interval": "per_model",
-                "cache_strategy": "dynamic"
+                "cache_strategy": "dynamic",
+                "batch_processing": {
+                    "enabled": "64GB+ RAM configurations",
+                    "disabled": "32GB RAM configurations"
+                }
             }
         },
         "quality_tips": {
@@ -144,6 +151,16 @@
                 "mlx_optimizations": {
                     "memory_efficient": false,
                     "batch_processing": "auto"
+                }
+            },
+            "direct_720p": {
+                "model": "720p",
+                "purpose": "High-quality direct generation for 64GB+ RAM",
+                "guidance_scale": 7.0,
+                "mlx_optimizations": {
+                    "memory_efficient": false,
+                    "batch_processing": "enabled",
+                    "precision": "float32"
                 }
             }
         }
