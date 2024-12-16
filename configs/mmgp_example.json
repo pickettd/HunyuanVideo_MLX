@@ -1,0 +1,25 @@
+{
+    "models": {
+        "model_540p": "ckpts/hunyuan-video-t2v-540p",
+        "model_720p": "ckpts/hunyuan-video-t2v-720p"
+    },
+    "schedule": [
+        {
+            "model": "model_540p",
+            "start_step": 0,
+            "end_step": 25,
+            "description": "Initial generation with 540p model for faster rough draft"
+        },
+        {
+            "model": "model_720p",
+            "start_step": 25,
+            "end_step": 50,
+            "description": "Refinement with 720p model for higher quality details"
+        }
+    ],
+    "notes": {
+        "usage": "This configuration demonstrates using a lower resolution model for initial generation followed by a higher resolution model for refinement",
+        "memory_optimization": "This approach can help manage memory usage on Apple Silicon by using the heavier model only for refinement",
+        "customization": "Users can adjust start_step and end_step values to find the optimal balance between speed and quality"
+    }
+}
