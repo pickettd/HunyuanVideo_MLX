@@ -1,0 +1,151 @@
+{
+    "models": {
+        "model_540p": "ckpts/hunyuan-video-t2v-540p",
+        "model_720p": "ckpts/hunyuan-video-t2v-720p"
+    },
+    "schedule": [
+        {
+            "model": "model_540p",
+            "start_step": 0,
+            "end_step": 35,
+            "description": "Initial generation with 540p model for memory efficiency"
+        },
+        {
+            "model": "model_720p",
+            "start_step": 35,
+            "end_step": 50,
+            "description": "Final refinement with 720p model for higher quality"
+        }
+    ],
+    "notes": {
+        "memory_optimization": {
+            "M1_Pro": {
+                "recommendation": "Use more steps with 540p model",
+                "settings": {
+                    "540p_steps": 35,
+                    "720p_steps": 15,
+                    "mps_watermark_ratio": 0.8,
+                    "precision": "float16"
+                }
+            },
+            "M1_Max": {
+                "recommendation": "Balanced approach possible",
+                "settings": {
+                    "540p_steps": 30,
+                    "720p_steps": 20,
+                    "mps_watermark_ratio": 0.7,
+                    "precision": "float16"
+                }
+            },
+            "M1_Ultra": {
+                "recommendation": "Can use more steps with 720p model",
+                "settings": {
+                    "540p_steps": 25,
+                    "720p_steps": 25,
+                    "mps_watermark_ratio": 0.7,
+                    "precision": "float16"
+                }
+            },
+            "M2_Pro": {
+                "recommendation": "Balanced approach with better efficiency",
+                "settings": {
+                    "540p_steps": 30,
+                    "720p_steps": 20,
+                    "mps_watermark_ratio": 0.7,
+                    "precision": "float16"
+                }
+            },
+            "M2_Max": {
+                "recommendation": "Can favor 720p model",
+                "settings": {
+                    "540p_steps": 25,
+                    "720p_steps": 25,
+                    "mps_watermark_ratio": 0.7,
+                    "precision": "float16"
+                }
+            },
+            "M2_Ultra": {
+                "recommendation": "Optimal for 720p model",
+                "settings": {
+                    "540p_steps": 20,
+                    "720p_steps": 30,
+                    "mps_watermark_ratio": 0.7,
+                    "precision": "float16"
+                }
+            },
+            "M3_Pro": {
+                "recommendation": "Enhanced balanced approach",
+                "settings": {
+                    "540p_steps": 25,
+                    "720p_steps": 25,
+                    "mps_watermark_ratio": 0.7,
+                    "precision": "float16"
+                }
+            },
+            "M3_Max": {
+                "recommendation": "Favor 720p with high efficiency",
+                "settings": {
+                    "540p_steps": 20,
+                    "720p_steps": 30,
+                    "mps_watermark_ratio": 0.7,
+                    "precision": "float16"
+                }
+            },
+            "M3_Ultra": {
+                "recommendation": "Maximum 720p utilization",
+                "settings": {
+                    "540p_steps": 15,
+                    "720p_steps": 35,
+                    "mps_watermark_ratio": 0.7,
+                    "precision": "float16"
+                }
+            }
+        },
+        "mlx_optimization": {
+            "precision_options": {
+                "float16": {
+                    "description": "Default precision, best balance of speed and quality",
+                    "recommended_for": ["All M-series chips"]
+                },
+                "float32": {
+                    "description": "Higher precision, more memory usage",
+                    "recommended_for": ["M1/M2/M3 Max/Ultra with sufficient RAM"]
+                }
+            },
+            "mps_settings": {
+                "high_performance": {
+                    "watermark_ratio": 0.8,
+                    "suitable_for": "Lower resolution (540p) generation"
+                },
+                "balanced": {
+                    "watermark_ratio": 0.7,
+                    "suitable_for": "Higher resolution (720p) generation"
+                }
+            },
+            "memory_management": {
+                "clear_interval": "per_model",
+                "cache_strategy": "dynamic"
+            }
+        },
+        "quality_tips": {
+            "initial_phase": {
+                "model": "540p",
+                "purpose": "Handles basic composition and motion",
+                "guidance_scale": 6.0,
+                "mlx_optimizations": {
+                    "memory_efficient": true,
+                    "batch_processing": "enabled"
+                }
+            },
+            "refinement_phase": {
+                "model": "720p",
+                "purpose": "Adds fine details and improves quality",
+                "guidance_scale": 7.5,
+                "mlx_optimizations": {
+                    "memory_efficient": false,
+                    "batch_processing": "auto"
+                }
+            }
+        }
+    }
+}

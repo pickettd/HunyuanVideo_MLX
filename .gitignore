@@ -35,20 +35,25 @@ ENV/
 
 # Project specific
 results/
-ckpts/
 *.mp4
 *.avi
 *.mov
+
+# Model files and weights
+ckpts/
+models/
+weights/
 *.pt
 *.pth
 *.ckpt
 *.bin
 *.safetensors
-
-# Model weights and checkpoints
-hunyuan-video-t2v*/
-vae/
-text_encoder/
+**/hunyuan-video-t2v*/
+**/vae/
+**/text_encoder/
+**/text_encoder_2/
+**/llava-llama*/
+**/transformers/
 
 # macOS
 .DS_Store

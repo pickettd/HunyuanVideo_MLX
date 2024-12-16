@@ -1,186 +1,133 @@
 import os
 import sys
-import json
-import requests
+import subprocess
 from pathlib import Path
-from tqdm import tqdm
-from huggingface_hub import hf_hub_download, HfApi, login
+from dotenv import load_dotenv
 from loguru import logger
+from huggingface_hub import hf_hub_download, list_repo_files
 
 def setup_logging():
     """Configure logging"""
     logger.remove()
     logger.add(sys.stdout, format="<green>{time:HH:mm:ss}</green> | {message}")
-    logger.add("download_weights.log", rotation="100 MB")
-
-def check_hf_token():
-    """Check if HF token is set and valid"""
-    token = os.environ.get('HF_TOKEN')
-    if not token:
-        logger.warning("HF_TOKEN environment variable not set")
-        logger.info("Please set your Hugging Face token:")
-        logger.info("export HF_TOKEN='your_token_here'")
-        logger.info("Or login using: huggingface-cli login")
-        return False
-    
-    try:
-        api = HfApi(token=token)
-        api.whoami()
-        login(token=token)
-        return True
-    except Exception as e:
-        logger.error(f"Error validating token: {str(e)}")
-        return False
 
 def create_directories():
     """Create necessary directories"""
-    base_dir = Path("ckpts")
     dirs = [
-        base_dir / "hunyuan-video-t2v-720p" / "transformers",
-        base_dir / "vae",
-        base_dir / "text_encoder"
+        "ckpts/hunyuan-video-t2v-720p/transformers",
+        "ckpts/vae",
+        "ckpts/text_encoder",
+        "ckpts/text_encoder_2",
+        "ckpts/llava-llama-3-8b-v1_1-transformers"
     ]
-    
     for dir_path in dirs:
-        dir_path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Created directory: {dir_path}")
+        Path(dir_path).mkdir(parents=True, exist_ok=True)
 
-def download_text_encoder():
-    """Download Hunyuan-Large text encoder model"""
-    logger.info("\nDownloading text encoder (Hunyuan-Large)...")
+def download_llava_model(token):
+    """Download llava model files"""
+    logger.info("\nDownloading llava model...")
+    repo_id = "xtuner/llava-llama-3-8b-v1_1-transformers"
+    
     try:
-        # Try downloading the model file directly
-        file_path = hf_hub_download(
-            repo_id="tencent/Tencent-Hunyuan-Large",
-            filename="Hunyuan-A52B-Instruct/model.safetensors",
-            local_dir="ckpts/text_encoder_temp",
-            local_dir_use_symlinks=False,
-            resume_download=True
+        # Get list of all files in the repository
+        files = list_repo_files(repo_id, token=token)
+        logger.info(f"Found {len(files)} files in {repo_id}")
+        
+        # Download each file
+        for file in files:
+            if file.endswith('.md') or file.endswith('.git'):
+                continue
+                
+            logger.info(f"Downloading {file}...")
+            file_path = hf_hub_download(
+                repo_id=repo_id,
+                filename=file,
+                token=token,
+                local_dir="ckpts/llava-llama-3-8b-v1_1-transformers"
+            )
+            logger.success(f"Downloaded {file} to {file_path}")
+            
+        # Process for text encoder
+        logger.info("\nProcessing llava model for text encoder...")
+        subprocess.run(
+            ["python", "hyvideo/utils/preprocess_text_encoder_tokenizer_utils.py",
+             "--input_dir", "ckpts/llava-llama-3-8b-v1_1-transformers",
+             "--output_dir", "ckpts/text_encoder"],
+            check=True
         )
-        
-        # Move to final location
-        target_path = Path("ckpts/text_encoder/llm.pt")
-        if target_path.exists():
-            target_path.unlink()
-        Path(file_path).rename(target_path)
-        
-        size_gb = target_path.stat().st_size / (1024**3)
-        logger.success(f"✓ Successfully downloaded text encoder model ({size_gb:.1f} GB)")
-        return True
+        logger.success("Successfully processed llava model for text encoder")
         
     except Exception as e:
-        try:
-            # Try alternative filename
+        logger.error(f"Error with llava model: {str(e)}")
+        return False
+    
+    return True
+
+def download_models():
+    """Download required models using huggingface_hub"""
+    # Load token from .env
+    load_dotenv()
+    token = os.getenv('HF_TOKEN')
+    
+    try:
+        # Download main model
+        logger.info("Downloading main model...")
+        main_model = hf_hub_download(
+            repo_id="tencent/HunyuanVideo",
+            filename="hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt",
+            token=token,
+            local_dir="ckpts"
+        )
+        logger.success(f"Downloaded main model to {main_model}")
+        
+        # Download VAE model
+        logger.info("\nDownloading VAE model...")
+        vae_model = hf_hub_download(
+            repo_id="tencent/HunyuanVideo",
+            filename="hunyuan-video-t2v-720p/vae/pytorch_model.pt",
+            token=token,
+            local_dir="ckpts"
+        )
+        logger.success(f"Downloaded VAE model to {vae_model}")
+        
+        # Download llava model
+        if not download_llava_model(token):
+            logger.warning("Failed to download or process llava model")
+        
+        # Download CLIP model files
+        logger.info("\nDownloading CLIP model...")
+        clip_files = [
+            "config.json",
+            "model.safetensors",
+            "preprocessor_config.json"
+        ]
+        for filename in clip_files:
             file_path = hf_hub_download(
-                repo_id="tencent/Tencent-Hunyuan-Large",
-                filename="Hunyuan-A52B-Instruct/pytorch_model.bin",
-                local_dir="ckpts/text_encoder_temp",
-                local_dir_use_symlinks=False,
-                resume_download=True
+                repo_id="openai/clip-vit-large-patch14",
+                filename=filename,
+                token=token,
+                local_dir="ckpts/text_encoder_2"
             )
+            logger.success(f"Downloaded {filename} to {file_path}")
             
-            # Move to final location
-            target_path = Path("ckpts/text_encoder/llm.pt")
-            if target_path.exists():
-                target_path.unlink()
-            Path(file_path).rename(target_path)
-            
-            size_gb = target_path.stat().st_size / (1024**3)
-            logger.success(f"✓ Successfully downloaded text encoder model ({size_gb:.1f} GB)")
-            return True
-            
-        except Exception as e2:
-            logger.error(f"✗ Error downloading text encoder: {str(e2)}")
-            logger.warning("Please download manually from: https://huggingface.co/tencent/Tencent-Hunyuan-Large")
-            logger.warning("And place in: ckpts/text_encoder/llm.pt")
-            return False
-
-def download_model_files():
-    """Download model files from Hugging Face"""
-    model_files = {
-        "main": {
-            "repo_id": "tencent/HunyuanVideo",
-            "filename": "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt",
-            "local_path": "ckpts/hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt"
-        },
-        "vae": {
-            "repo_id": "tencent/HunyuanVideo",
-            "filename": "hunyuan-video-t2v-720p/vae/pytorch_model.pt",
-            "local_path": "ckpts/vae/884-16c-hy.pt"
-        }
-    }
-
-    for model_name, info in model_files.items():
-        logger.info(f"\nDownloading {model_name} model...")
-        try:
-            file_path = hf_hub_download(
-                repo_id=info["repo_id"],
-                filename=info["filename"],
-                local_dir="ckpts",
-                local_dir_use_symlinks=False,
-                resume_download=True,
-                force_download=False
-            )
-            
-            # Move to correct location if needed
-            target_path = Path(info["local_path"])
-            if Path(file_path) != target_path:
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                if target_path.exists():
-                    target_path.unlink()  # Remove existing file if it exists
-                Path(file_path).rename(target_path)
-            
-            size_gb = target_path.stat().st_size / (1024**3)
-            logger.success(f"✓ Successfully downloaded {model_name} model ({size_gb:.1f} GB)")
-            
-        except Exception as e:
-            logger.error(f"✗ Error downloading {model_name} model: {str(e)}")
-            logger.warning(f"Please check the model repository for updates:")
-            logger.warning("https://huggingface.co/tencent/HunyuanVideo")
-
-def verify_downloads():
-    """Verify downloaded files"""
-    logger.info("\nVerifying downloads...")
-    
-    expected_files = {
-        "ckpts/hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt": "Main model",
-        "ckpts/vae/884-16c-hy.pt": "VAE model",
-        "ckpts/text_encoder/llm.pt": "Text encoder (Hunyuan-Large)"
-    }
-    
-    all_present = True
-    for file_path, desc in expected_files.items():
-        path = Path(file_path)
-        if path.exists():
-            size_gb = path.stat().st_size / (1024**3)
-            logger.success(f"✓ {desc} present ({size_gb:.1f} GB)")
-        else:
-            logger.error(f"✗ {desc} missing: {file_path}")
-            all_present = False
-    
-    return all_present
+        logger.success("\nAll models downloaded successfully!")
+        
+    except Exception as e:
+        logger.error(f"Error downloading models: {str(e)}")
+        sys.exit(1)
 
 def main():
     setup_logging()
     logger.info("Starting HunyuanVideo model weights download")
     
-    if not check_hf_token():
+    # Check for .env file
+    if not Path(".env").exists():
+        logger.error(".env file not found")
+        logger.info("Please copy .env.example to .env and set your HF_TOKEN")
         sys.exit(1)
     
     create_directories()
-    download_model_files()
-    download_text_encoder()
-    
-    if verify_downloads():
-        logger.success("\nAll model weights downloaded successfully!")
-        logger.info("Next steps:")
-        logger.info("1. Run 'python check_system.py' to verify your setup")
-        logger.info("2. Follow the examples in QUICKSTART.md to generate videos")
-    else:
-        logger.warning("\nSome model files are missing.")
-        logger.info("Please check the error messages above and try downloading again.")
-        logger.info("For the text encoder, we need to use the Hunyuan-Large model.")
-        logger.info("Download from: https://huggingface.co/tencent/Tencent-Hunyuan-Large")
+    download_models()
 
 if __name__ == "__main__":
     main()

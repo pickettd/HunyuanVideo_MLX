@@ -1,186 +1,92 @@
-# HunyuanVideo MLX Port
+# HunyuanVideo MLX
 
-Native port of [HunyuanVideo](https://github.com/Tencent/HunyuanVideo) optimized for Apple Silicon using MLX and Metal Performance Shaders (MPS).
+A streamlined, Mac-native port of Tencent's text-to-video AI model, optimized specifically for Apple Silicon. Generate high-quality videos from text descriptions with native performance on your M1/M2/M3 Mac.
 
-## ⚠️ Important Note About Model Weights
+## Why This Port?
 
-Currently, only the main transformer model is automatically downloadable. The VAE and text encoder models need to be downloaded manually from the official HunyuanVideo repository. We are working on updating the download script.
+This project makes HunyuanVideo accessible on Apple Silicon Macs by:
+- Leveraging native Metal acceleration through MLX
+- Optimizing memory usage for Mac hardware
+- Simplifying the setup process
+- Providing Mac-specific performance tuning
 
-Required Model Files:
-1. ✓ Main transformer model (automatically downloaded)
-   - Location: `ckpts/hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt`
-   - Size: ~25GB
+## Setup & Usage
 
-2. ⚠️ VAE model (manual download required)
-   - Location: `ckpts/vae/884-16c-hy.pt`
-   - Download from: [HunyuanVideo Repository](https://huggingface.co/tencent/HunyuanVideo)
-
-3. ⚠️ Text encoder model (manual download required)
-   - Location: `ckpts/text_encoder/llm.pt`
-   - Download from: [HunyuanVideo Repository](https://huggingface.co/tencent/HunyuanVideo)
-
-## System Requirements
-
-- Apple Silicon Mac (M1/M2/M3)
-- macOS 12.3 or later
-- Minimum 32GB RAM recommended
-- 64GB RAM for higher resolutions
-
-## Quick Start
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/gregcmartin/HunyuanVideo_MLX.git
-cd HunyuanVideo_MLX
-```
+# One-line setup
+curl -s https://raw.githubusercontent.com/gregcmartin/HunyuanVideo_MLX/main/install_mlx.sh | bash
 
-2. Create and activate Python virtual environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-3. Install dependencies:
-```bash
-# Install PyTorch with MPS support
-pip install --pre torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/nightly/cpu
-
-# Install other requirements
-pip install -r requirements_mps.txt
-pip install ninja flash-attention --no-build-isolation
-```
-
-4. Download model weights:
-```bash
-# Download main transformer model
-python download_weights.py
-
-# Manually download VAE and text encoder models
-# Place them in their respective directories:
-# - ckpts/vae/884-16c-hy.pt
-# - ckpts/text_encoder/llm.pt
-```
-
-5. Generate a video:
-```bash
+# Generate your first video
 python sample_video_mps.py \
     --video-size 544 960 \
-    --video-length 129 \
-    --infer-steps 50 \
-    --prompt "An Australian Shepherd dog catching a frisbee in mid-air, slow motion, cinematic style" \
-    --flow-reverse \
+    --prompt "a cat is running, realistic." \
     --save-path ./results
 ```
 
-## Utility Tools
+## Key Features
 
-The port includes several tools to help you optimize and monitor performance:
+- **Mac-Native Performance**: Built specifically for Apple Silicon using Metal acceleration
+- **Memory Optimization**: Efficient implementation that works well with Mac memory architecture
+- **Multiple Resolutions**: Support for various video sizes and aspect ratios
+  - 540p (544x960, 960x544, etc.)
+  - 720p (720x1280, 1280x720, etc.)
+- **Real-time Monitoring**: Built-in resource monitoring for optimal performance
+- **Easy Setup**: Streamlined installation process for Mac users
 
-1. System Check:
-```bash
-python check_system.py
-```
+## Hardware Requirements
 
-2. Resource Monitor:
-```bash
-python monitor_resources.py
-```
+- **Mac**: Any Apple Silicon Mac (M1/M2/M3)
+- **OS**: macOS 12.3 or later
+- **RAM**: 
+  - Minimum: 32GB
+  - Recommended: 64GB (for 720p videos)
+- **Python**: Version 3.10 or later
 
-3. Performance Benchmark:
-```bash
-python benchmark.py
-```
-
-4. Environment Setup:
-```bash
-./setup_env.sh
-```
-
-## Advanced Usage: MMGP
-
-MMGP (Mixed Model Generation Pipeline) allows using different models at different stages for optimal memory usage and quality:
+## Example Configurations
 
 ```bash
+# Portrait video (9:16)
 python sample_video_mps.py \
-    --video-size 720 1280 \
+    --video-size 544 960 \
+    --prompt "your prompt here"
+
+# Landscape video (16:9)
+python sample_video_mps.py \
+    --video-size 960 544 \
+    --prompt "your prompt here"
+
+# Square video (1:1)
+python sample_video_mps.py \
+    --video-size 720 720 \
+    --prompt "your prompt here"
+
+# Advanced options
+python sample_video_mps.py \
+    --video-size 544 960 \
     --video-length 129 \
-    --infer-steps 50 \
-    --prompt "An Australian Shepherd dog catching a frisbee in mid-air, slow motion, cinematic style" \
+    --infer-steps 30 \
+    --prompt "your prompt here" \
     --flow-reverse \
-    --mmgp-mode \
-    --mmgp-config configs/mmgp_example.json \
+    --embedded-cfg-scale 6.0 \
     --save-path ./results
 ```
 
 ## Performance Tips
 
-1. Memory Management:
-   - Start with lower resolutions (544x960) first
-   - Use MMGP for efficient memory usage
-   - Monitor memory usage with `monitor_resources.py`
-   - Close other memory-intensive applications
-
-2. Generation Speed:
-   - Use lighter models for initial steps
-   - Adjust batch size based on available memory
-   - Consider using fewer inference steps for faster generation
-
-3. Quality Optimization:
-   - Use higher quality models for final refinement
-   - Experiment with different MMGP configurations
-   - Balance between speed and quality using step distribution
-
-## Performance Expectations
-
-Generation times will vary based on your specific Apple Silicon chip and available memory:
-
-- M1 Pro/Max (32GB) with MMGP:
-  - 544x960 → 720x1280: ~12-18 minutes per video
-  - Pure 544x960: ~10-15 minutes per video
-
-- M2 Pro/Max (32GB+) with MMGP:
-  - 544x960 → 720x1280: ~10-15 minutes per video
-  - Pure 544x960: ~8-12 minutes per video
-
-- M3 Pro/Max (48GB+) with MMGP:
-  - 544x960 → 720x1280: ~8-12 minutes per video
-  - Pure 544x960: ~6-10 minutes per video
-
-## Troubleshooting
-
-1. If you encounter "MPS not available" error:
-   - Ensure you're on macOS 12.3 or later
-   - Run `python check_system.py` to verify compatibility
-   - Set required environment variables:
-     ```bash
-     export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7
-     ```
-
-2. If you encounter memory errors:
-   - Use `monitor_resources.py` to track memory usage
-   - Try using MMGP with more steps on the lighter model
-   - Reduce video resolution or batch size
-   - Close other applications
-
-3. If you encounter missing model errors:
-   - Verify all model files are in their correct locations
-   - Check file permissions
-   - Run `python check_system.py` to verify model paths
-
-## Directory Structure
-
-See [DIRECTORY_STRUCTURE.md](DIRECTORY_STRUCTURE.md) for a complete overview of the project organization.
-
-## Quick Reference
-
-See [QUICKSTART.md](QUICKSTART.md) for a condensed guide to getting started quickly.
+- Use 540p resolution for faster generation and lower memory usage
+- Close memory-intensive applications before generating videos
+- Monitor system resources with `python monitor_resources.py`
+- First generation may be slower due to Metal shader compilation
+- Set memory ratio for optimal performance:
+  ```bash
+  export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7
+  ```
 
 ## License
 
-This project is licensed under the same terms as the original HunyuanVideo project.
+Licensed under the Tencent Hunyuan Community License - see [LICENSE.txt](LICENSE.txt) for details.
 
-## Acknowledgments
+## Acknowledgements
 
-- Original [HunyuanVideo](https://github.com/Tencent/HunyuanVideo) project by Tencent
-- [MLX](https://github.com/ml-explore/mlx) by Apple
-- Apple Metal team for MPS support
+- Original [HunyuanVideo](https://github.com/Tencent/HunyuanVideo) by Tencent
+- [MLX](https://github.com/ml-explore/mlx) framework by Apple

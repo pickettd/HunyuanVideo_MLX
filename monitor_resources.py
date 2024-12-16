@@ -3,16 +3,46 @@ import time
 import os
 import curses
 from datetime import datetime
+import subprocess
+import mlx.core as mx
 
-def get_gpu_memory():
-    """Get MPS GPU memory usage"""
+def get_metal_memory():
+    """Get Metal GPU memory usage using system_profiler"""
     try:
-        # This is a basic approximation since MPS doesn't provide direct memory stats
+        cmd = ['system_profiler', 'SPDisplaysDataType']
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # Parse the output to find Metal GPU memory
+        lines = result.stdout.split('\n')
+        total_mem = 0
+        for line in lines:
+            if 'VRAM' in line:
+                # Extract memory value in MB/GB and convert to GB
+                mem_str = line.split(':')[1].strip()
+                if 'MB' in mem_str:
+                    total_mem = float(mem_str.replace('MB', '').strip()) / 1024
+                elif 'GB' in mem_str:
+                    total_mem = float(mem_str.replace('GB', '').strip())
+        
+        # Get current memory usage through psutil as an approximation
         memory = psutil.virtual_memory()
+        used_mem = (memory.total - memory.available) / (1024 ** 3)
+        
         return {
-            'total': memory.total / (1024 ** 3),  # Convert to GB
-            'used': (memory.total - memory.available) / (1024 ** 3),
-            'free': memory.available / (1024 ** 3)
+            'total': total_mem,
+            'used': min(used_mem, total_mem),  # Cap at total memory
+            'free': max(0, total_mem - used_mem)
+        }
+    except Exception as e:
+        return None
+
+def get_mlx_info():
+    """Get MLX-specific information"""
+    try:
+        return {
+            'version': mx.__version__,
+            'backend': 'Metal',
+            'device': mx.default_device()
         }
     except Exception as e:
         return None
@@ -35,6 +65,9 @@ def main(stdscr):
     # Hide cursor
     curses.curs_set(0)
     
+    # Get MLX info once
+    mlx_info = get_mlx_info()
+    
     # Get initial process list
     python_processes = {p.pid: p.cmdline() for p in psutil.process_iter(['pid', 'cmdline']) 
                        if 'python' in ' '.join(p.cmdline()).lower()}
@@ -53,30 +86,39 @@ def main(stdscr):
             # Get CPU usage
             cpu_percent = psutil.cpu_percent(interval=1)
             
-            # Get GPU memory
-            gpu_mem = get_gpu_memory()
+            # Get Metal memory
+            metal_mem = get_metal_memory()
             
             # Display header
-            stdscr.addstr(0, 0, f"HunyuanVideo Resource Monitor - {current_time}", curses.color_pair(1) | curses.A_BOLD)
-            stdscr.addstr(2, 0, "System Resources:", curses.A_BOLD)
+            stdscr.addstr(0, 0, f"HunyuanVideo MLX Resource Monitor - {current_time}", curses.color_pair(1) | curses.A_BOLD)
+            
+            # Display MLX info
+            if mlx_info:
+                stdscr.addstr(2, 0, "MLX Configuration:", curses.A_BOLD)
+                stdscr.addstr(3, 2, f"Version: {mlx_info['version']}")
+                stdscr.addstr(4, 2, f"Backend: {mlx_info['backend']}")
+                stdscr.addstr(5, 2, f"Device: {mlx_info['device']}")
+            
+            # Display system resources
+            stdscr.addstr(7, 0, "System Resources:", curses.A_BOLD)
             
             # Display CPU usage
             color = curses.color_pair(1) if cpu_percent < 70 else curses.color_pair(2) if cpu_percent < 90 else curses.color_pair(3)
-            stdscr.addstr(3, 2, f"CPU Usage: {cpu_percent:>5.1f}%", color)
+            stdscr.addstr(8, 2, f"CPU Usage: {cpu_percent:>5.1f}%", color)
             
             # Display memory usage
             color = curses.color_pair(1) if memory_percent < 70 else curses.color_pair(2) if memory_percent < 90 else curses.color_pair(3)
-            stdscr.addstr(4, 2, f"Memory: {memory.used/1024/1024/1024:>5.1f}GB / {memory.total/1024/1024/1024:>5.1f}GB ({memory_percent:>5.1f}%)", color)
+            stdscr.addstr(9, 2, f"Memory: {memory.used/1024/1024/1024:>5.1f}GB / {memory.total/1024/1024/1024:>5.1f}GB ({memory_percent:>5.1f}%)", color)
             
-            # Display GPU memory if available
-            if gpu_mem:
-                gpu_percent = (gpu_mem['used'] / gpu_mem['total']) * 100
-                color = curses.color_pair(1) if gpu_percent < 70 else curses.color_pair(2) if gpu_percent < 90 else curses.color_pair(3)
-                stdscr.addstr(5, 2, f"GPU Memory: {gpu_mem['used']:>5.1f}GB / {gpu_mem['total']:>5.1f}GB ({gpu_percent:>5.1f}%)", color)
+            # Display Metal memory if available
+            if metal_mem:
+                metal_percent = (metal_mem['used'] / metal_mem['total']) * 100 if metal_mem['total'] > 0 else 0
+                color = curses.color_pair(1) if metal_percent < 70 else curses.color_pair(2) if metal_percent < 90 else curses.color_pair(3)
+                stdscr.addstr(10, 2, f"Metal Memory: {metal_mem['used']:>5.1f}GB / {metal_mem['total']:>5.1f}GB ({metal_percent:>5.1f}%)", color)
             
             # Display Python processes
-            stdscr.addstr(7, 0, "Python Processes:", curses.A_BOLD)
-            row = 8
+            stdscr.addstr(12, 0, "Python Processes:", curses.A_BOLD)
+            row = 13
             for pid, cmdline in python_processes.items():
                 if psutil.pid_exists(pid):
                     mem_usage = get_process_memory(pid)

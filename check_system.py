@@ -3,6 +3,13 @@ import platform
 import psutil
 import os
 from pathlib import Path
+import mlx.core as mx
+
+def check_mlx():
+    """Check MLX configuration"""
+    print("\n=== MLX Configuration ===")
+    print(f"MLX version: {mx.__version__}")
+    print(f"Metal backend: Available")  # MLX requires Metal, so if imported successfully, it's available
 
 def check_mps():
     """Check MPS availability and configuration"""
@@ -26,6 +33,9 @@ def check_system():
     # Check if running on Apple Silicon
     is_arm = platform.processor() == 'arm'
     print(f"Apple Silicon: {'Yes' if is_arm else 'No'}")
+    
+    if not is_arm:
+        print("\n⚠️  Warning: This version is optimized for Apple Silicon (M1/M2/M3)")
     
     # Memory information
     memory = psutil.virtual_memory()
@@ -61,20 +71,35 @@ def check_model_weights():
     else:
         print("✓ All required model weights are present")
 
-def main():
-    print("=== HunyuanVideo System Check ===")
-    
-    check_mps()
-    check_system()
-    check_model_weights()
-    
+def check_environment():
+    """Check environment variables and configurations"""
     print("\n=== Environment Variables ===")
     mps_ratio = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO', '0.5')
     print(f"PYTORCH_MPS_HIGH_WATERMARK_RATIO: {mps_ratio}")
     
     if float(mps_ratio) < 0.7:
-        print("\nTip: For better performance, you may want to set:")
+        print("\nTip: For better performance, set:")
         print("export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7")
+
+def main():
+    print("=== HunyuanVideo MLX System Check ===")
+    
+    # Check macOS version
+    macos_version = platform.mac_ver()[0]
+    if float(macos_version.split('.')[0]) < 12:
+        print("\n⚠️  Error: macOS 12.3 or later is required")
+        return
+    
+    check_mlx()
+    check_mps()
+    check_system()
+    check_model_weights()
+    check_environment()
+    
+    print("\nFor optimal performance:")
+    print("1. Close other memory-intensive applications")
+    print("2. Monitor system resources with: python monitor_resources.py")
+    print("3. Start with lower resolutions and gradually increase based on performance")
 
 if __name__ == "__main__":
     main()
