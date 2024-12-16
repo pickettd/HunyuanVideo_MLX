@@ -2,6 +2,23 @@
 
 Native port of [HunyuanVideo](https://github.com/Tencent/HunyuanVideo) optimized for Apple Silicon using MLX and Metal Performance Shaders (MPS).
 
+## ⚠️ Important Note About Model Weights
+
+Currently, only the main transformer model is automatically downloadable. The VAE and text encoder models need to be downloaded manually from the official HunyuanVideo repository. We are working on updating the download script.
+
+Required Model Files:
+1. ✓ Main transformer model (automatically downloaded)
+   - Location: `ckpts/hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt`
+   - Size: ~25GB
+
+2. ⚠️ VAE model (manual download required)
+   - Location: `ckpts/vae/884-16c-hy.pt`
+   - Download from: [HunyuanVideo Repository](https://huggingface.co/tencent/HunyuanVideo)
+
+3. ⚠️ Text encoder model (manual download required)
+   - Location: `ckpts/text_encoder/llm.pt`
+   - Download from: [HunyuanVideo Repository](https://huggingface.co/tencent/HunyuanVideo)
+
 ## System Requirements
 
 - Apple Silicon Mac (M1/M2/M3)
@@ -35,9 +52,14 @@ pip install ninja flash-attention --no-build-isolation
 
 4. Download model weights:
 ```bash
+# Download main transformer model
 python download_weights.py
+
+# Manually download VAE and text encoder models
+# Place them in their respective directories:
+# - ckpts/vae/884-16c-hy.pt
+# - ckpts/text_encoder/llm.pt
 ```
-This will download approximately 30GB of model weights from Hugging Face. The download may take some time depending on your internet connection.
 
 5. Generate a video:
 ```bash
@@ -139,6 +161,11 @@ Generation times will vary based on your specific Apple Silicon chip and availab
    - Try using MMGP with more steps on the lighter model
    - Reduce video resolution or batch size
    - Close other applications
+
+3. If you encounter missing model errors:
+   - Verify all model files are in their correct locations
+   - Check file permissions
+   - Run `python check_system.py` to verify model paths
 
 ## Directory Structure
 

@@ -1,5 +1,17 @@
 # Quick Start Guide
 
+## ⚠️ Model Weights Status
+
+1. ✓ Main transformer model (automatic download):
+```bash
+python download_weights.py
+```
+
+2. ⚠️ Manual Downloads Required:
+- VAE model: Place in `ckpts/vae/884-16c-hy.pt`
+- Text encoder model: Place in `ckpts/text_encoder/llm.pt`
+Download both from: [HunyuanVideo Repository](https://huggingface.co/tencent/HunyuanVideo)
+
 ## Initial Setup
 
 1. Run system check to verify compatibility:
@@ -28,9 +40,30 @@ pip install -r requirements_mps.txt
 pip install ninja flash-attention --no-build-isolation
 ```
 
-5. Download model weights:
+## Model Setup
+
+1. Download main transformer model:
 ```bash
 python download_weights.py
+```
+
+2. Manually download and place additional models:
+- Download VAE and text encoder models from HunyuanVideo repository
+- Place in correct directories:
+  ```
+  ckpts/
+  ├── hunyuan-video-t2v-720p/    # ✓ (automatically downloaded)
+  │   └── transformers/
+  │       └── mp_rank_00_model_states.pt
+  ├── vae/                       # ⚠️ (manual download)
+  │   └── 884-16c-hy.pt
+  └── text_encoder/             # ⚠️ (manual download)
+      └── llm.pt
+  ```
+
+3. Verify model setup:
+```bash
+python check_system.py
 ```
 
 ## Basic Video Generation
@@ -73,35 +106,27 @@ python monitor_resources.py
 python benchmark.py
 ```
 
-## Memory Usage Tips
-
-1. Start with lower resolutions (544x960) to test system compatibility
-2. Use MMGP for higher resolutions to optimize memory usage
-3. Monitor system resources during generation
-4. Close other memory-intensive applications
-5. Set environment variables for optimal performance:
-```bash
-export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7
-```
-
 ## Common Issues
 
-1. If you see "MPS not available":
-   ```bash
-   python check_system.py
-   ```
-   This will verify your system compatibility and provide specific recommendations.
+1. Missing Model Files:
+- Verify all model files are downloaded
+- Check file permissions
+- Run `python check_system.py` to verify paths
 
-2. If you encounter memory errors:
-   - Use `monitor_resources.py` to track memory usage
-   - Try using MMGP mode
-   - Reduce video resolution
-   - Close other applications
+2. Memory Issues:
+- Use `monitor_resources.py` to track usage
+- Try MMGP mode for better memory management
+- Reduce resolution or batch size
+- Set environment variable:
+  ```bash
+  export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7
+  ```
 
-3. If generation is slow:
-   - Use MMGP with more steps on lighter model
-   - Monitor CPU/Memory usage
-   - Consider reducing inference steps
+3. Performance Issues:
+- Start with lower resolution first
+- Use MMGP for memory optimization
+- Monitor system resources
+- Close other applications
 
 ## Maintenance
 
