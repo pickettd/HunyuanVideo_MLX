@@ -39,6 +39,16 @@ ckpts/
 *.mp4
 *.avi
 *.mov
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+
+# Model weights and checkpoints
+hunyuan-video-t2v*/
+vae/
+text_encoder/
 
 # macOS
 .DS_Store
