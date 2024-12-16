@@ -7,68 +7,54 @@
 - Location: `ckpts/hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt`
 - Status: Working
 
-2. ⚠️ VAE Model
-- Currently unavailable through direct download
-- Expected Location: `ckpts/vae/884-16c-hy.pt`
-- Status: Pending release
+2. ✓ VAE Model
+- Successfully downloaded (0.9 GB)
+- Location: `ckpts/vae/884-16c-hy.pt`
+- Status: Working
 
 3. ⚠️ Text Encoder Model
 - Currently unavailable through direct download
 - Expected Location: `ckpts/text_encoder/llm.pt`
-- Status: Pending release
-
-## Important Notice
-
-The HunyuanVideo project is currently in its initial release phase. While the main transformer model is available, we are waiting for the release of the VAE and text encoder models. We are actively monitoring the following sources for updates:
-
-1. Official Sources:
-- [HunyuanVideo Repository](https://github.com/Tencent/HunyuanVideo)
-- [Hugging Face Model Page](https://huggingface.co/tencent/HunyuanVideo)
-- [Project Website](https://aivideo.hunyuan.tencent.com)
-
-2. Alternative Options:
-- We are investigating compatible VAE models
-- Looking into text encoder alternatives
-- Monitoring community solutions
+- Status: Investigating alternative sources
+- Note: The model uses a pre-trained MLLM (Multimodal Large Language Model) as text encoder
 
 ## Next Steps
 
-1. For Users:
-- The main transformer model is downloaded and ready
-- Watch the official repository for VAE and text encoder releases
-- Join the community discussions for updates
+1. For Text Encoder:
+- Investigating the correct source for the text encoder model
+- Checking if it needs to be downloaded from a separate repository
+- Looking into the Hunyuan-Large model mentioned in documentation
 
-2. For Development:
-- We can proceed with setup and infrastructure
-- Test system compatibility with available components
-- Prepare for full integration when all models are available
+2. Current Capabilities:
+- Main transformer model is ready
+- VAE model is ready
+- System can be tested for partial functionality
+
+3. Action Items:
+- Monitor the official repository for text encoder updates
+- Check the Hunyuan-Large repository for compatible text encoder
+- Test system with available components
 
 ## Updates
 
-We will update this document as soon as:
-1. The VAE model becomes available
-2. The text encoder model becomes available
-3. Alternative solutions are verified
+We have successfully downloaded:
+1. Main transformer model (23.9 GB)
+2. VAE model (0.9 GB)
 
-## Temporary Limitations
-
-Without the VAE and text encoder models:
-- Full video generation is not possible yet
-- System testing is limited to transformer model operations
-- Memory requirements might change when full system is available
+The text encoder appears to be part of a separate package. According to the documentation, HunyuanVideo uses a pre-trained Multimodal Large Language Model (MLLM) as its text encoder. We are investigating the correct source and will update this document when we have more information.
 
 ## Stay Updated
 
 To stay informed about model releases:
 1. Watch the [HunyuanVideo Repository](https://github.com/Tencent/HunyuanVideo)
 2. Check the [Hugging Face Model Page](https://huggingface.co/tencent/HunyuanVideo)
-3. Monitor the [Issues Page](https://github.com/Tencent/HunyuanVideo/issues) for community updates
+3. Monitor the [Hunyuan-Large Repository](https://github.com/Tencent/Tencent-Hunyuan-Large)
 
 ## Need Help?
 
-If you have access to working VAE or text encoder models:
-1. Verify they are compatible with HunyuanVideo
-2. Share information through official channels
-3. Help update documentation for the community
+If you have information about the text encoder model:
+1. Check if you have access to the Hunyuan-Large model
+2. Verify compatibility with HunyuanVideo
+3. Share information through official channels
 
 We appreciate your patience as we work to provide a complete solution.

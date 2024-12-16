@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import requests
 from pathlib import Path
 from tqdm import tqdm
@@ -44,6 +45,56 @@ def create_directories():
         dir_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Created directory: {dir_path}")
 
+def download_text_encoder():
+    """Download Hunyuan-Large text encoder model"""
+    logger.info("\nDownloading text encoder (Hunyuan-Large)...")
+    try:
+        # Try downloading the model file directly
+        file_path = hf_hub_download(
+            repo_id="tencent/Tencent-Hunyuan-Large",
+            filename="Hunyuan-A52B-Instruct/model.safetensors",
+            local_dir="ckpts/text_encoder_temp",
+            local_dir_use_symlinks=False,
+            resume_download=True
+        )
+        
+        # Move to final location
+        target_path = Path("ckpts/text_encoder/llm.pt")
+        if target_path.exists():
+            target_path.unlink()
+        Path(file_path).rename(target_path)
+        
+        size_gb = target_path.stat().st_size / (1024**3)
+        logger.success(f"✓ Successfully downloaded text encoder model ({size_gb:.1f} GB)")
+        return True
+        
+    except Exception as e:
+        try:
+            # Try alternative filename
+            file_path = hf_hub_download(
+                repo_id="tencent/Tencent-Hunyuan-Large",
+                filename="Hunyuan-A52B-Instruct/pytorch_model.bin",
+                local_dir="ckpts/text_encoder_temp",
+                local_dir_use_symlinks=False,
+                resume_download=True
+            )
+            
+            # Move to final location
+            target_path = Path("ckpts/text_encoder/llm.pt")
+            if target_path.exists():
+                target_path.unlink()
+            Path(file_path).rename(target_path)
+            
+            size_gb = target_path.stat().st_size / (1024**3)
+            logger.success(f"✓ Successfully downloaded text encoder model ({size_gb:.1f} GB)")
+            return True
+            
+        except Exception as e2:
+            logger.error(f"✗ Error downloading text encoder: {str(e2)}")
+            logger.warning("Please download manually from: https://huggingface.co/tencent/Tencent-Hunyuan-Large")
+            logger.warning("And place in: ckpts/text_encoder/llm.pt")
+            return False
+
 def download_model_files():
     """Download model files from Hugging Face"""
     model_files = {
@@ -54,13 +105,8 @@ def download_model_files():
         },
         "vae": {
             "repo_id": "tencent/HunyuanVideo",
-            "filename": "vae/vae.safetensors",
+            "filename": "hunyuan-video-t2v-720p/vae/pytorch_model.pt",
             "local_path": "ckpts/vae/884-16c-hy.pt"
-        },
-        "text_encoder": {
-            "repo_id": "tencent/HunyuanVideo",
-            "filename": "text_encoder/text_encoder.safetensors",
-            "local_path": "ckpts/text_encoder/llm.pt"
         }
     }
 
@@ -80,6 +126,8 @@ def download_model_files():
             target_path = Path(info["local_path"])
             if Path(file_path) != target_path:
                 target_path.parent.mkdir(parents=True, exist_ok=True)
+                if target_path.exists():
+                    target_path.unlink()  # Remove existing file if it exists
                 Path(file_path).rename(target_path)
             
             size_gb = target_path.stat().st_size / (1024**3)
@@ -97,7 +145,7 @@ def verify_downloads():
     expected_files = {
         "ckpts/hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt": "Main model",
         "ckpts/vae/884-16c-hy.pt": "VAE model",
-        "ckpts/text_encoder/llm.pt": "Text encoder"
+        "ckpts/text_encoder/llm.pt": "Text encoder (Hunyuan-Large)"
     }
     
     all_present = True
@@ -121,6 +169,7 @@ def main():
     
     create_directories()
     download_model_files()
+    download_text_encoder()
     
     if verify_downloads():
         logger.success("\nAll model weights downloaded successfully!")
@@ -130,8 +179,8 @@ def main():
     else:
         logger.warning("\nSome model files are missing.")
         logger.info("Please check the error messages above and try downloading again.")
-        logger.info("If issues persist, check the model repository for updates:")
-        logger.info("https://huggingface.co/tencent/HunyuanVideo")
+        logger.info("For the text encoder, we need to use the Hunyuan-Large model.")
+        logger.info("Download from: https://huggingface.co/tencent/Tencent-Hunyuan-Large")
 
 if __name__ == "__main__":
     main()
