@@ -29,19 +29,23 @@ def add_mmgp_args(parser):
 
 def check_mps_settings():
     """Verify MPS settings before running"""
-    high_ratio = os.getenv('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
-    low_ratio = os.getenv('PYTORCH_MPS_LOW_WATERMARK_RATIO')
+    required_vars = {
+        'PYTORCH_MPS_HIGH_WATERMARK_RATIO': '0.4',
+        'PYTORCH_MPS_LOW_WATERMARK_RATIO': '0.3',
+        'PYTORCH_MPS_ALLOCATOR_POLICY': 'garbage_collection',
+        'MPS_USE_GUARD_MODE': '1',
+        'MPS_ENABLE_MEMORY_GUARD': '1',
+        'PYTORCH_MPS_SYNC_OPERATIONS': '1'
+    }
     
-    if not high_ratio or not low_ratio:
-        logger.error("MPS watermark ratios not set!")
-        logger.info("Please set the following environment variables:")
-        logger.info("export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.6")
-        logger.info("export PYTORCH_MPS_LOW_WATERMARK_RATIO=0.5")
-        return False
+    for var, default_value in required_vars.items():
+        if not os.getenv(var):
+            logger.warning(f"{var} not set! Setting to default: {default_value}")
+            os.environ[var] = default_value
     
     try:
-        high_ratio = float(high_ratio)
-        low_ratio = float(low_ratio)
+        high_ratio = float(os.getenv('PYTORCH_MPS_HIGH_WATERMARK_RATIO'))
+        low_ratio = float(os.getenv('PYTORCH_MPS_LOW_WATERMARK_RATIO'))
         
         if high_ratio > 1.0 or low_ratio > 1.0 or high_ratio < low_ratio:
             logger.error(f"Invalid watermark ratios: high={high_ratio}, low={low_ratio}")
@@ -55,10 +59,59 @@ def check_mps_settings():
     return True
 
 def clear_memory():
-    """Clear CUDA memory cache"""
+    """Aggressively clear memory"""
     if torch.backends.mps.is_available():
+        # Force synchronous operations to complete
+        torch.mps.synchronize()
+        # Clear MPS cache
         torch.mps.empty_cache()
+    # Force garbage collection
     gc.collect()
+    # Additional garbage collection cycle
+    gc.collect()
+
+def staged_model_loading(models_root_path, args, device):
+    """Load models in stages with memory clearing between each stage"""
+    try:
+        logger.info("Stage 1: Initial setup...")
+        clear_memory()
+        
+        logger.info("Stage 2: Loading model with conservative memory settings...")
+        # Temporarily lower watermark ratio during model loading
+        original_high_ratio = os.getenv('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
+        original_low_ratio = os.getenv('PYTORCH_MPS_LOW_WATERMARK_RATIO')
+        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.4'
+        os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.3'
+        
+        try:
+            hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
+                models_root_path, 
+                args=args,
+                device=device
+            )
+            clear_memory()
+            
+            logger.info("Model loaded successfully!")
+            return hunyuan_video_sampler
+            
+        finally:
+            # Restore original watermark ratios
+            if original_high_ratio:
+                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = original_high_ratio
+            if original_low_ratio:
+                os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = original_low_ratio
+    
+    except Exception as e:
+        logger.error(f"Error during model loading: {str(e)}")
+        if "out of memory" in str(e):
+            logger.error("\nMemory error during model loading. Try these steps:")
+            logger.info("1. Close all other applications")
+            logger.info("2. Restart your Python environment")
+            logger.info("3. Set even lower watermark ratios in .env:")
+            logger.info("   PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.3")
+            logger.info("   PYTORCH_MPS_LOW_WATERMARK_RATIO=0.2")
+            logger.info("4. If issues persist, try reducing model precision further")
+        raise e
 
 def main():
     # Check MPS settings first
@@ -104,12 +157,8 @@ def main():
         os.makedirs(save_path, exist_ok=True)
 
     try:
-        # Load models with MMGP optimization
-        hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
-            models_root_path, 
-            args=args,
-            device=device
-        )
+        # Load models with staged loading
+        hunyuan_video_sampler = staged_model_loading(models_root_path, args, device)
         
         # Get the updated args
         args = hunyuan_video_sampler.args
@@ -117,6 +166,7 @@ def main():
         # Clear memory before inference
         clear_memory()
 
+        logger.info("Starting video generation...")
         # Start sampling with optimized settings
         outputs = hunyuan_video_sampler.predict(
             prompt=args.prompt, 
@@ -125,7 +175,7 @@ def main():
             video_length=args.video_length,
             seed=args.seed,
             negative_prompt=args.neg_prompt,
-            infer_steps=30,  # Reduced steps for memory efficiency
+            infer_steps=25,  # Further reduced steps for memory efficiency
             guidance_scale=7.0,  # Balanced guidance scale
             num_videos_per_prompt=1,  # Generate one video at a time
             flow_shift=args.flow_shift,
@@ -140,15 +190,16 @@ def main():
             time_flag = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d-%H:%M:%S")
             save_path = f"{save_path}/{time_flag}_seed{outputs['seeds'][i]}_{outputs['prompts'][i][:100].replace('/','')}.mp4"
             save_videos_grid(sample, save_path, fps=24)
-            logger.info(f'Sample save to: {save_path}')
+            logger.info(f'Sample saved to: {save_path}')
 
     except RuntimeError as e:
         if "out of memory" in str(e):
-            logger.error("Out of memory error occurred. Try:")
-            logger.info("1. Reducing video resolution")
-            logger.info("2. Reducing video length")
-            logger.info("3. Using fewer inference steps")
-            logger.info("4. Clearing other applications from memory")
+            logger.error("\nOut of memory error occurred. Try these steps:")
+            logger.info("1. Close all other applications")
+            logger.info("2. Reduce video resolution (e.g., --video-size 384 640)")
+            logger.info("3. Reduce video length")
+            logger.info("4. Lower watermark ratios in .env")
+            logger.info("5. If issues persist, try restarting your Python environment")
         raise e
     finally:
         # Clean up memory
