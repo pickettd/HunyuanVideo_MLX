@@ -10,6 +10,7 @@ from hyvideo.inference import HunyuanVideoSampler
 
 import torch
 import argparse
+import gc
 
 def add_mmgp_args(parser):
     group = parser.add_argument_group(title="MMGP args")
@@ -34,7 +35,7 @@ def check_mps_settings():
     if not high_ratio or not low_ratio:
         logger.error("MPS watermark ratios not set!")
         logger.info("Please set the following environment variables:")
-        logger.info("export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7")
+        logger.info("export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.6")
         logger.info("export PYTORCH_MPS_LOW_WATERMARK_RATIO=0.5")
         return False
     
@@ -53,6 +54,12 @@ def check_mps_settings():
     
     return True
 
+def clear_memory():
+    """Clear CUDA memory cache"""
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+    gc.collect()
+
 def main():
     # Check MPS settings first
     if not check_mps_settings():
@@ -65,6 +72,9 @@ def main():
         else:
             print("MPS not available because the current MacOS version is not 12.3+ and/or you do not have an MPS-enabled device")
         return
+
+    # Clear memory before starting
+    clear_memory()
 
     # Parse arguments
     parser = argparse.ArgumentParser(description="HunyuanVideo inference script")
@@ -93,40 +103,56 @@ def main():
     if not os.path.exists(args.save_path):
         os.makedirs(save_path, exist_ok=True)
 
-    # Load models with MMGP optimization
-    hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
-        models_root_path, 
-        args=args,
-        device=device
-    )
-    
-    # Get the updated args
-    args = hunyuan_video_sampler.args
+    try:
+        # Load models with MMGP optimization
+        hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
+            models_root_path, 
+            args=args,
+            device=device
+        )
+        
+        # Get the updated args
+        args = hunyuan_video_sampler.args
 
-    # Start sampling with optimized settings
-    outputs = hunyuan_video_sampler.predict(
-        prompt=args.prompt, 
-        height=args.video_size[0],
-        width=args.video_size[1],
-        video_length=args.video_length,
-        seed=args.seed,
-        negative_prompt=args.neg_prompt,
-        infer_steps=30,  # Reduced steps for memory efficiency
-        guidance_scale=7.0,  # Balanced guidance scale
-        num_videos_per_prompt=1,  # Generate one video at a time
-        flow_shift=args.flow_shift,
-        batch_size=1,  # Process one batch at a time
-        embedded_guidance_scale=args.embedded_cfg_scale
-    )
-    samples = outputs['samples']
-    
-    # Save samples
-    for i, sample in enumerate(samples):
-        sample = samples[i].unsqueeze(0)
-        time_flag = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d-%H:%M:%S")
-        save_path = f"{save_path}/{time_flag}_seed{outputs['seeds'][i]}_{outputs['prompts'][i][:100].replace('/','')}.mp4"
-        save_videos_grid(sample, save_path, fps=24)
-        logger.info(f'Sample save to: {save_path}')
+        # Clear memory before inference
+        clear_memory()
+
+        # Start sampling with optimized settings
+        outputs = hunyuan_video_sampler.predict(
+            prompt=args.prompt, 
+            height=args.video_size[0],
+            width=args.video_size[1],
+            video_length=args.video_length,
+            seed=args.seed,
+            negative_prompt=args.neg_prompt,
+            infer_steps=30,  # Reduced steps for memory efficiency
+            guidance_scale=7.0,  # Balanced guidance scale
+            num_videos_per_prompt=1,  # Generate one video at a time
+            flow_shift=args.flow_shift,
+            batch_size=1,  # Process one batch at a time
+            embedded_guidance_scale=args.embedded_cfg_scale
+        )
+        samples = outputs['samples']
+        
+        # Save samples
+        for i, sample in enumerate(samples):
+            sample = samples[i].unsqueeze(0)
+            time_flag = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d-%H:%M:%S")
+            save_path = f"{save_path}/{time_flag}_seed{outputs['seeds'][i]}_{outputs['prompts'][i][:100].replace('/','')}.mp4"
+            save_videos_grid(sample, save_path, fps=24)
+            logger.info(f'Sample save to: {save_path}')
+
+    except RuntimeError as e:
+        if "out of memory" in str(e):
+            logger.error("Out of memory error occurred. Try:")
+            logger.info("1. Reducing video resolution")
+            logger.info("2. Reducing video length")
+            logger.info("3. Using fewer inference steps")
+            logger.info("4. Clearing other applications from memory")
+        raise e
+    finally:
+        # Clean up memory
+        clear_memory()
 
 if __name__ == "__main__":
     main()
