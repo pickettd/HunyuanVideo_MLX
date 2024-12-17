@@ -30,7 +30,7 @@ Before running `download_weights.py`, make sure you have:
 
 ## Memory-Optimized Generation (Updated!)
 
-The system now uses an enhanced chunked generation approach for better memory efficiency:
+The system now uses an optimized generation approach with consistent fp16 precision:
 
 ### For All Mac Configurations:
 ```bash
@@ -40,7 +40,11 @@ python sample_video_mps.py \
     --mmgp-config configs/mmgp_mlx.json \
     --video-size 544 960 \
     --prompt "your prompt here" \
-    --video-length 65
+    --video-length 13 \
+    --precision fp16 \
+    --vae-precision fp16 \
+    --text-encoder-precision fp16 \
+    --text-encoder-precision-2 fp16
 
 # After stable generation, try:
 python sample_video_mps.py \
@@ -48,17 +52,28 @@ python sample_video_mps.py \
     --mmgp-config configs/mmgp_mlx.json \
     --video-size 720 720 \
     --prompt "your prompt here" \
-    --video-length 65
+    --video-length 25 \
+    --precision fp16 \
+    --vae-precision fp16 \
+    --text-encoder-precision fp16 \
+    --text-encoder-precision-2 fp16
 ```
+
+### Video Length Requirements
+
+The model has specific requirements for video length:
+- Must satisfy: (video_length - 1) % 4 == 0
+- Valid lengths are: 5, 9, 13, 17, 21, 25, etc.
+- Single frame generation (video_length=1) is also supported
 
 ### Memory Optimization Features
 
-The enhanced chunked generation system provides:
-- Smaller chunk sizes (8 frames) with reduced overlap
-- Aggressive memory cleanup between chunks
-- Dynamic chunk size reduction on OOM
+The optimized generation system provides:
+- Consistent fp16 precision across all components
+- Aggressive memory cleanup between operations
 - Conservative memory watermark settings
-- Forced fp16 precision for efficiency
+- VAE tiling support
+- Forced autocast for mixed precision
 
 ### Resolution Guidelines
 
@@ -66,9 +81,9 @@ Start with smaller resolutions and gradually increase based on stability:
 
 | RAM   | Initial Resolution | Max Resolution | Video Length |
 |-------|-------------------|----------------|--------------|
-| 32GB  | 544x960 (540p)   | 720x720        | 65 frames   |
-| 64GB  | 544x960 (540p)   | 720x1280       | 65 frames   |
-| 64GB+ | 720x720          | 720x1280       | 129 frames  |
+| 32GB  | 544x960 (540p)   | 720x720        | 13 frames   |
+| 64GB  | 544x960 (540p)   | 720x1280       | 21 frames   |
+| 64GB+ | 720x720          | 720x1280       | 25 frames   |
 
 ## Memory Management Tips
 
@@ -83,7 +98,7 @@ PYTORCH_MPS_LOW_WATERMARK_RATIO=0.2
 
 For optimal performance:
 1. Start with 540p resolution (544x960)
-2. Use shorter video length (65 frames)
+2. Use shorter video length (13 frames)
 3. Close other applications
 4. Monitor resources with `python monitor_resources.py`
 5. Clear Python environment between runs
@@ -106,11 +121,10 @@ python gradio_server.py
 
 - **Mac-Native Performance**: Built specifically for Apple Silicon using Metal acceleration
 - **Enhanced Memory Optimization**: 
-  * Smaller chunk sizes with reduced overlap
+  * Consistent fp16 precision across components
   * Aggressive memory cleanup
   * Conservative watermark settings
-  * Forced fp16 precision
-  * Dynamic chunk size reduction
+  * Forced autocast for mixed precision
   * VAE tiling support
 - **Multiple Resolutions**: Support for various video sizes and aspect ratios
 - **Real-time Monitoring**: Built-in resource monitoring
@@ -122,7 +136,7 @@ python gradio_server.py
 - Start with 544x960 resolution
 - Use fp16 precision for memory efficiency
 - Conservative watermark ratio (0.3)
-- Memory-efficient chunked processing
+- Memory-efficient processing
 
 ### Minimum Requirements
 - Apple Silicon Mac (M1/M2/M3)
@@ -139,10 +153,21 @@ If you encounter memory issues:
    PYTORCH_MPS_LOW_WATERMARK_RATIO=0.2
    ```
 2. Start with 544x960 resolution
-3. Use 65 frames video length
+3. Use 13 frames video length
 4. Monitor memory with `python monitor_resources.py`
 5. Clear Python environment between runs
 6. Close other applications
+
+If you encounter precision errors:
+1. Ensure all precision flags are set to fp16:
+   ```bash
+   --precision fp16 \
+   --vae-precision fp16 \
+   --text-encoder-precision fp16 \
+   --text-encoder-precision-2 fp16
+   ```
+2. Use valid video lengths: 5, 9, 13, 17, 21, 25, etc.
+3. Clear Python environment between runs
 
 ## License
 

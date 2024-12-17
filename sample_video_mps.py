@@ -10,37 +10,55 @@ import psutil
 import numpy as np
 
 from hyvideo.utils.file_utils import save_videos_grid
-from hyvideo.utils.chunked_generation import generate_video_chunks, clear_memory
 from hyvideo.config import parse_args
 from hyvideo.inference import HunyuanVideoSampler
 
-def free_memory():
-    """Aggressively free system memory"""
+def aggressive_memory_cleanup():
+    """More aggressive memory cleanup routine"""
+    # Clear CUDA cache if available
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     
+    # Clear MPS cache with multiple cycles
     if hasattr(torch.mps, 'empty_cache'):
-        torch.mps.empty_cache()
-    
-    if torch.backends.mps.is_available():
-        # Force synchronize before clearing
-        torch.mps.synchronize()
-        # Multiple synchronization cycles
-        for _ in range(3):
+        for _ in range(5):  # Increased cycles
             torch.mps.empty_cache()
-            torch.mps.synchronize()
+            if torch.backends.mps.is_available():
+                torch.mps.synchronize()
+                time.sleep(0.1)  # Small delay between cycles
     
     # Multiple GC cycles
-    for _ in range(3):
+    for _ in range(5):  # Increased cycles
         gc.collect()
+        time.sleep(0.1)  # Small delay between cycles
+    
+    # Force Python garbage collection
+    gc.collect(generation=2)
+
+def get_system_memory():
+    """Get current system memory usage"""
+    memory = psutil.virtual_memory()
+    return {
+        'total': memory.total / (1024**3),  # GB
+        'available': memory.available / (1024**3),  # GB
+        'percent': memory.percent
+    }
 
 def staged_model_loading(models_root_path, args, device):
-    """Load models in stages with aggressive memory management"""
+    """Enhanced staged model loading with better memory management"""
     try:
-        logger.info("Stage 1: Initial setup and memory cleanup...")
-        free_memory()
+        logger.info("Stage 1: Initial setup and aggressive memory cleanup...")
+        aggressive_memory_cleanup()
         
-        # Set minimal memory limits for loading
+        memory_info = get_system_memory()
+        logger.info(f"Available memory before loading: {memory_info['available']:.2f}GB")
+        
+        # Stage 2: Disable MPS memory limits for initial loading
+        logger.info("Stage 2: Disabling MPS memory limits...")
+        original_high = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO', '0.3')
+        original_low = os.environ.get('PYTORCH_MPS_LOW_WATERMARK_RATIO', '0.2')
+        
+        # Disable memory limits temporarily for loading
         os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
         os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.0'
         
@@ -49,29 +67,62 @@ def staged_model_loading(models_root_path, args, device):
         args.precision = 'fp16'
         args.vae_precision = 'fp16'
         args.text_encoder_precision = 'fp16'
+        args.text_encoder_precision_2 = 'fp16'
         args.disable_autocast = False
         args.vae_tiling = True
         
-        logger.info("Stage 2: Loading model with unlimited memory...")
         try:
-            hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
-                models_root_path,
-                args=args,
-                device=device
-            )
+            logger.info("Stage 3: Attempting model loading with disabled memory limits...")
+            hunyuan_video_sampler = None
+            
+            # Multiple attempts with increasing delays between tries
+            for attempt in range(3):
+                try:
+                    aggressive_memory_cleanup()
+                    time.sleep(2)  # Increased delay before attempt
+                    
+                    # Set default device type for autocast
+                    torch.set_default_device(device)
+                    torch.set_default_dtype(torch.float16)
+                    
+                    # Enable autocast for mixed precision
+                    with torch.autocast(device_type='mps', dtype=torch.float16):
+                        hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
+                            models_root_path,
+                            args=args,
+                            device=device
+                        )
+                    
+                    logger.info("Model loaded successfully!")
+                    break
+                    
+                except RuntimeError as e:
+                    if "out of memory" in str(e) and attempt < 2:
+                        logger.warning(f"OOM on attempt {attempt + 1}, cleaning up and retrying...")
+                        aggressive_memory_cleanup()
+                        time.sleep(3)  # Increased delay between retries
+                    else:
+                        raise e
+            
+            if hunyuan_video_sampler is None:
+                raise RuntimeError("Failed to load model after multiple attempts")
             
             # Force synchronization and cleanup
             if torch.backends.mps.is_available():
                 torch.mps.synchronize()
-            free_memory()
+            aggressive_memory_cleanup()
             
-            logger.info("Model loaded successfully!")
             return hunyuan_video_sampler
             
         finally:
-            # Set conservative memory settings
-            os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.3'  # Reduced from 0.4
-            os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.2'   # Reduced from 0.3
+            # Keep memory limits disabled if loading was successful
+            if hunyuan_video_sampler is not None:
+                logger.info("Stage 4: Keeping memory limits disabled for generation...")
+            else:
+                # Restore original memory settings only if loading failed
+                logger.info("Stage 4: Restoring original memory settings...")
+                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = original_high
+                os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = original_low
     
     except Exception as e:
         logger.error(f"Error during model loading: {str(e)}")
@@ -89,9 +140,9 @@ def main():
     os.environ['PYTORCH_MPS_SYNC_OPERATIONS'] = '1'
     os.environ['PYTORCH_MPS_AGGRESSIVE_MEMORY_CLEANUP'] = '1'
     
-    # New: Set initial conservative memory limits
-    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.3'  # Start with conservative limit
-    os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.2'
+    # Disable MPS memory limits
+    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+    os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.0'
 
     # Check if MPS is available
     if not torch.backends.mps.is_available():
@@ -102,22 +153,17 @@ def main():
         return
 
     # Initial memory cleanup
-    free_memory()
+    aggressive_memory_cleanup()
 
     # Parse arguments
     args = parse_args()
     
-    # Force conservative settings
-    args.video_size = [256, 384]  # Minimum size for initial load
-    args.video_length = 33  # Minimum length
-    args.precision = 'fp16'
-    args.vae_precision = 'fp16'
-    args.text_encoder_precision = 'fp16'
-    args.disable_autocast = False
-    args.vae_tiling = True
-    
     # Set device to MPS
     device = torch.device("mps")
+    
+    # Set default device type and dtype
+    torch.set_default_device(device)
+    torch.set_default_dtype(torch.float16)
     
     models_root_path = Path(args.model_base)
     if not models_root_path.exists():
@@ -128,43 +174,35 @@ def main():
     os.makedirs(save_path, exist_ok=True)
 
     try:
-        # Load models with staged loading
+        # Load models with enhanced staged loading
         hunyuan_video_sampler = staged_model_loading(models_root_path, args, device)
         args = hunyuan_video_sampler.args
 
         # Clear memory before inference
-        free_memory()
+        aggressive_memory_cleanup()
 
-        logger.info("Starting video generation with optimized chunked approach...")
+        logger.info("Starting video generation...")
         
-        # Calculate optimal chunk size based on available memory
-        total_ram = psutil.virtual_memory().total / (1024**3)  # Total RAM in GB
-        if total_ram >= 64:
-            chunk_size = 8  # Reduced from 16 for better memory management
-            overlap = 2    # Reduced from 4 but still maintains smooth transitions
-        else:
-            chunk_size = 4  # Minimal chunk size
-            overlap = 1    # Minimal overlap
+        # Get system memory info
+        memory_info = get_system_memory()
+        logger.info(f"Total RAM: {memory_info['total']:.2f}GB, Available: {memory_info['available']:.2f}GB")
         
-        logger.info(f"Using chunk size: {chunk_size} frames with {overlap} frame overlap")
-        
-        outputs = generate_video_chunks(
-            model=hunyuan_video_sampler,
-            prompt=args.prompt,
-            height=args.video_size[0],
-            width=args.video_size[1],
-            video_length=args.video_length,
-            chunk_size=chunk_size,
-            overlap=overlap,
-            seed=args.seed,
-            negative_prompt=args.neg_prompt,
-            infer_steps=25,
-            guidance_scale=7.0,
-            num_videos_per_prompt=1,
-            flow_shift=args.flow_shift,
-            batch_size=1,
-            embedded_guidance_scale=args.embedded_cfg_scale
-        )
+        # Generate video with autocast
+        with torch.autocast(device_type='mps', dtype=torch.float16):
+            outputs = hunyuan_video_sampler.predict(
+                prompt=args.prompt,
+                height=args.video_size[0],
+                width=args.video_size[1],
+                video_length=args.video_length,
+                seed=args.seed,
+                negative_prompt=args.neg_prompt,
+                infer_steps=25,
+                guidance_scale=7.0,
+                num_videos_per_prompt=1,
+                flow_shift=args.flow_shift,
+                batch_size=1,
+                embedded_guidance_scale=args.embedded_cfg_scale
+            )
         
         samples = outputs['samples']
         
@@ -181,8 +219,8 @@ def main():
         raise e
     finally:
         # Final cleanup with multiple cycles
-        for _ in range(3):
-            free_memory()
+        for _ in range(5):
+            aggressive_memory_cleanup()
 
 if __name__ == "__main__":
     main()
