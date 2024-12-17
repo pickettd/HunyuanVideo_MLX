@@ -26,7 +26,38 @@ def add_mmgp_args(parser):
     )
     return parser
 
+def check_mps_settings():
+    """Verify MPS settings before running"""
+    high_ratio = os.getenv('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
+    low_ratio = os.getenv('PYTORCH_MPS_LOW_WATERMARK_RATIO')
+    
+    if not high_ratio or not low_ratio:
+        logger.error("MPS watermark ratios not set!")
+        logger.info("Please set the following environment variables:")
+        logger.info("export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7")
+        logger.info("export PYTORCH_MPS_LOW_WATERMARK_RATIO=0.5")
+        return False
+    
+    try:
+        high_ratio = float(high_ratio)
+        low_ratio = float(low_ratio)
+        
+        if high_ratio > 1.0 or low_ratio > 1.0 or high_ratio < low_ratio:
+            logger.error(f"Invalid watermark ratios: high={high_ratio}, low={low_ratio}")
+            logger.info("High ratio should be <= 1.0 and greater than low ratio")
+            return False
+            
+    except ValueError:
+        logger.error("Invalid watermark ratio values")
+        return False
+    
+    return True
+
 def main():
+    # Check MPS settings first
+    if not check_mps_settings():
+        return
+
     # Check if MPS is available
     if not torch.backends.mps.is_available():
         if not torch.backends.mps.is_built():
@@ -40,12 +71,15 @@ def main():
     parser = add_mmgp_args(parser)
     args = parse_args(namespace=parser.parse_args([]))
     
-    # Enable MMGP mode by default for M3 optimization
+    # Enable MMGP mode by default for memory optimization
     args.mmgp_mode = True
-    args.precision = "fp32"  # Use float32 for 64GB RAM
-    args.vae_precision = "fp32"
-    args.text_encoder_precision = "fp32"
-    args.disable_autocast = True  # Disable autocast for consistent precision
+    
+    # Use memory-efficient settings
+    args.precision = "fp16"  # Use float16 for memory efficiency
+    args.vae_precision = "fp16"
+    args.text_encoder_precision = "fp16"
+    args.disable_autocast = False  # Enable autocast for memory efficiency
+    args.vae_tiling = True  # Enable VAE tiling
     
     # Set device to MPS
     device = torch.device("mps")
@@ -77,11 +111,11 @@ def main():
         video_length=args.video_length,
         seed=args.seed,
         negative_prompt=args.neg_prompt,
-        infer_steps=40,  # Optimized steps for direct 720p
+        infer_steps=30,  # Reduced steps for memory efficiency
         guidance_scale=7.0,  # Balanced guidance scale
-        num_videos_per_prompt=args.num_videos,
+        num_videos_per_prompt=1,  # Generate one video at a time
         flow_shift=args.flow_shift,
-        batch_size=args.batch_size,
+        batch_size=1,  # Process one batch at a time
         embedded_guidance_scale=args.embedded_cfg_scale
     )
     samples = outputs['samples']

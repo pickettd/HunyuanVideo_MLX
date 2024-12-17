@@ -52,6 +52,27 @@ if [ ! -f .env ]; then
     echo -e "${YELLOW}Please edit .env and add your Hugging Face token${NC}"
 fi
 
+# Set environment variables
+echo -e "\n${GREEN}Setting up environment variables...${NC}"
+VENV_ACTIVATE_SCRIPT="venv/bin/activate"
+
+# Remove any existing PyTorch MPS settings
+sed -i '' '/export PYTORCH_MPS_.*_WATERMARK_RATIO/d' "$VENV_ACTIVATE_SCRIPT"
+
+# Add the correct watermark ratios
+echo 'export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7' >> "$VENV_ACTIVATE_SCRIPT"
+echo 'export PYTORCH_MPS_LOW_WATERMARK_RATIO=0.5' >> "$VENV_ACTIVATE_SCRIPT"
+
+# Also set them in the current session
+export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7
+export PYTORCH_MPS_LOW_WATERMARK_RATIO=0.5
+
+# Verify environment variables
+if [ "$PYTORCH_MPS_HIGH_WATERMARK_RATIO" != "0.7" ] || [ "$PYTORCH_MPS_LOW_WATERMARK_RATIO" != "0.5" ]; then
+    echo -e "${RED}Error: Failed to set PyTorch MPS watermark ratios${NC}"
+    exit 1
+fi
+
 # Download models
 echo -e "\n${GREEN}Downloading model weights...${NC}"
 if [ -f .env ]; then
@@ -61,13 +82,6 @@ else
     exit 1
 fi
 
-# Set environment variables
-echo -e "\n${GREEN}Setting up environment variables...${NC}"
-VENV_ACTIVATE_SCRIPT="venv/bin/activate"
-if ! grep -q "PYTORCH_MPS_HIGH_WATERMARK_RATIO" "$VENV_ACTIVATE_SCRIPT"; then
-    echo 'export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7' >> "$VENV_ACTIVATE_SCRIPT"
-fi
-
 # Verify installation
 echo -e "\n${GREEN}Verifying installation...${NC}"
 python check_system.py
@@ -75,7 +89,10 @@ python check_system.py
 echo -e "\n${GREEN}Installation complete!${NC}"
 echo -e "\nNext steps:"
 echo -e "1. Run: ${YELLOW}source venv/bin/activate${NC}"
-echo -e "2. Generate a video: ${YELLOW}python sample_video_mps.py \\"
+echo -e "2. Verify environment variables:"
+echo -e "   ${YELLOW}echo \$PYTORCH_MPS_HIGH_WATERMARK_RATIO  # Should be 0.7${NC}"
+echo -e "   ${YELLOW}echo \$PYTORCH_MPS_LOW_WATERMARK_RATIO   # Should be 0.5${NC}"
+echo -e "3. Generate a video: ${YELLOW}python sample_video_mps.py \\"
 echo "    --video-size 544 960 \\"
 echo "    --video-length 129 \\"
 echo "    --infer-steps 30 \\"
@@ -89,6 +106,13 @@ echo "Python version: $(python --version)"
 echo "MLX version: $(pip show mlx | grep Version)"
 echo "macOS version: $(sw_vers -productVersion)"
 echo "Architecture: $(uname -m)"
+echo "MPS High Watermark Ratio: $PYTORCH_MPS_HIGH_WATERMARK_RATIO"
+echo "MPS Low Watermark Ratio: $PYTORCH_MPS_LOW_WATERMARK_RATIO"
 
 # Deactivate virtual environment
 deactivate
+
+# Final reminder
+echo -e "\n${YELLOW}Important: After activating the virtual environment, verify the MPS settings:${NC}"
+echo -e "${YELLOW}  PYTORCH_MPS_HIGH_WATERMARK_RATIO should be 0.7${NC}"
+echo -e "${YELLOW}  PYTORCH_MPS_LOW_WATERMARK_RATIO should be 0.5${NC}"
