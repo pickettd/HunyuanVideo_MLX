@@ -8,8 +8,8 @@ sys.path.append(project_root)
 from hyvideo.modules.attenion import attention
 
 # Set MPS memory configuration
-if hasattr(torch.backends.mps, 'set_high_watermark_ratio'):
-    torch.backends.mps.set_high_watermark_ratio(0.8)
+os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.8'
+os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.5'
 
 def test_mm_double_stream_block_attention():
     if not torch.backends.mps.is_available():
@@ -19,10 +19,10 @@ def test_mm_double_stream_block_attention():
     device = torch.device("mps")
     dtype = torch.float32
     batch_size = 1
-    seq_len_img = 512  # Further reduced for memory constraints
-    seq_len_txt = 128  # Further reduced for memory constraints
-    heads_num = 8     # Reduced for memory constraints
-    head_dim = 64     # Reduced for memory constraints
+    seq_len_img = 256  # Further reduced for memory constraints
+    seq_len_txt = 64   # Further reduced for memory constraints
+    heads_num = 8      # Reduced for memory constraints
+    head_dim = 32      # Reduced for memory constraints
 
     img_q = torch.randn(batch_size, seq_len_img, heads_num, head_dim, device=device, dtype=dtype)
     img_k = torch.randn(batch_size, seq_len_img, heads_num, head_dim, device=device, dtype=dtype)
@@ -79,12 +79,12 @@ def test_mm_single_stream_block_attention():
 
     device = torch.device("mps")
     dtype = torch.float32
-    txt_len = 128     # Reduced for memory constraints
+    txt_len = 64       # Reduced for memory constraints
     batch_size = 1
-    seq_len_img = 512  # Reduced for memory constraints
-    seq_len_txt = 128  # Reduced for memory constraints
-    heads_num = 8     # Reduced for memory constraints
-    head_dim = 64     # Reduced for memory constraints
+    seq_len_img = 256  # Reduced for memory constraints
+    seq_len_txt = 64   # Reduced for memory constraints
+    heads_num = 8      # Reduced for memory constraints
+    head_dim = 32      # Reduced for memory constraints
 
     with torch.no_grad():   
         img_q = torch.randn(batch_size, seq_len_img, heads_num, head_dim, device=device, dtype=dtype)
