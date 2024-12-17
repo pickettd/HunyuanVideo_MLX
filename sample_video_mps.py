@@ -86,7 +86,7 @@ def staged_model_loading(models_root_path, args, device):
                     torch.set_default_dtype(torch.float16)
                     
                     # Enable autocast for mixed precision
-                    with torch.autocast(device_type='mps', dtype=torch.float16):
+                    with torch.autocast(device_type='mps', dtype=torch.float16, enabled=True):
                         hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
                             models_root_path,
                             args=args,
@@ -188,7 +188,7 @@ def main():
         logger.info(f"Total RAM: {memory_info['total']:.2f}GB, Available: {memory_info['available']:.2f}GB")
         
         # Generate video with autocast
-        with torch.autocast(device_type='mps', dtype=torch.float16):
+        with torch.autocast(device_type='mps', dtype=torch.float16, enabled=True):
             outputs = hunyuan_video_sampler.predict(
                 prompt=args.prompt,
                 height=args.video_size[0],
