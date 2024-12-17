@@ -16,12 +16,19 @@ This project makes HunyuanVideo accessible on Apple Silicon Macs by:
 # One-line setup
 curl -s https://raw.githubusercontent.com/gregcmartin/HunyuanVideo_MLX/main/install_mlx.sh | bash
 
+# Download model weights (requires Hugging Face token)
+python download_weights.py
+
 # Generate your first video
 python sample_video_mps.py \
     --video-size 720 1280 \
     --prompt "a cat is running, realistic." \
     --save-path ./results
 ```
+
+Before running `download_weights.py`, make sure you have:
+1. A Hugging Face account and access token (get it from https://huggingface.co/settings/tokens)
+2. Created a `.env` file with your token: `HF_TOKEN=your_token_here`
 
 ## Key Features
 
