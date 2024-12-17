@@ -13,21 +13,6 @@ import argparse
 import gc
 import json
 
-def add_mmgp_args(parser):
-    group = parser.add_argument_group(title="MMGP args")
-    group.add_argument(
-        "--mmgp-mode",
-        action="store_true",
-        help="Enable MMGP (Mixed Model Generation Pipeline) mode",
-    )
-    group.add_argument(
-        "--mmgp-config",
-        type=str,
-        default="configs/mmgp_mlx.json",
-        help="Path to MMGP configuration file",
-    )
-    return parser
-
 def check_mps_settings():
     """Verify MPS settings before running"""
     required_vars = {
@@ -97,6 +82,15 @@ def get_mac_model_settings(config):
     else:
         return config['notes']['memory_optimization']['M3_Max_32GB']['settings']
 
+def map_precision(precision_str):
+    """Map precision string to correct format"""
+    precision_map = {
+        'float32': 'fp32',
+        'float16': 'fp16',
+        'bfloat16': 'bf16'
+    }
+    return precision_map.get(precision_str, 'fp16')  # Default to fp16 if unknown
+
 def staged_model_loading(models_root_path, args, device):
     """Load models in stages with memory clearing between each stage"""
     try:
@@ -156,17 +150,8 @@ def main():
     # Clear memory before starting
     clear_memory()
 
-    # Create base argument parser
-    parser = argparse.ArgumentParser(description="HunyuanVideo inference script")
-    
-    # Add MMGP arguments first
-    parser = add_mmgp_args(parser)
-    
-    # Parse known args to get MMGP settings
-    known_args, _ = parser.parse_known_args()
-    
-    # Parse all arguments
-    args = parse_args(namespace=known_args)
+    # Parse arguments
+    args = parse_args()
     
     # Handle MMGP mode
     if args.mmgp_mode:
@@ -174,12 +159,15 @@ def main():
         mmgp_config = load_mmgp_config(args.mmgp_config)
         settings = get_mac_model_settings(mmgp_config)
         
-        # Apply MMGP settings
-        args.precision = settings.get('precision', 'float16')
-        args.vae_precision = settings.get('precision', 'float16')
-        args.text_encoder_precision = settings.get('precision', 'float16')
+        # Apply MMGP settings with correct precision mapping
+        precision = map_precision(settings.get('precision', 'float16'))
+        args.precision = precision
+        args.vae_precision = precision
+        args.text_encoder_precision = precision
         args.disable_autocast = False
         args.vae_tiling = True
+        
+        logger.info(f"Using precision: {precision}")
         
         if 'batch_processing' in settings and settings['batch_processing'] == 'enabled':
             args.batch_size = 1  # Start conservative
