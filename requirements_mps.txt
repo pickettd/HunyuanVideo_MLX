@@ -22,6 +22,7 @@ tqdm>=4.66.1
 huggingface-hub>=0.20.1
 psutil>=5.9.7  # For system monitoring
 rich>=13.7.0   # For enhanced CLI output
+loguru>=0.7.0  # For logging
 
 # Optional Dependencies
 gradio>=4.12.0  # For web interface
