@@ -3,131 +3,95 @@ import time
 from pathlib import Path
 from loguru import logger
 from datetime import datetime
+import torch
+import gc
+import json
+import psutil
+import numpy as np
 
 from hyvideo.utils.file_utils import save_videos_grid
 from hyvideo.utils.chunked_generation import generate_video_chunks, clear_memory
 from hyvideo.config import parse_args
 from hyvideo.inference import HunyuanVideoSampler
 
-import torch
-import argparse
-import gc
-import json
-
-def check_mps_settings():
-    """Verify MPS settings before running"""
-    required_vars = {
-        'PYTORCH_MPS_HIGH_WATERMARK_RATIO': '0.3',  # More conservative default
-        'PYTORCH_MPS_LOW_WATERMARK_RATIO': '0.2',
-        'PYTORCH_MPS_ALLOCATOR_POLICY': 'garbage_collection',
-        'MPS_USE_GUARD_MODE': '1',
-        'MPS_ENABLE_MEMORY_GUARD': '1',
-        'PYTORCH_MPS_SYNC_OPERATIONS': '1',
-        'PYTORCH_MPS_AGGRESSIVE_MEMORY_CLEANUP': '1'
-    }
+def free_memory():
+    """Aggressively free system memory"""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     
-    for var, default_value in required_vars.items():
-        if not os.getenv(var):
-            logger.warning(f"{var} not set! Setting to default: {default_value}")
-            os.environ[var] = default_value
+    if hasattr(torch.mps, 'empty_cache'):
+        torch.mps.empty_cache()
     
-    try:
-        high_ratio = float(os.getenv('PYTORCH_MPS_HIGH_WATERMARK_RATIO'))
-        low_ratio = float(os.getenv('PYTORCH_MPS_LOW_WATERMARK_RATIO'))
-        
-        if high_ratio > 1.0 or low_ratio > 1.0 or high_ratio < low_ratio:
-            logger.error(f"Invalid watermark ratios: high={high_ratio}, low={low_ratio}")
-            logger.info("High ratio should be <= 1.0 and greater than low ratio")
-            return False
-            
-    except ValueError:
-        logger.error("Invalid watermark ratio values")
-        return False
+    if torch.backends.mps.is_available():
+        # Force synchronize before clearing
+        torch.mps.synchronize()
+        # Multiple synchronization cycles
+        for _ in range(3):
+            torch.mps.empty_cache()
+            torch.mps.synchronize()
     
-    return True
-
-def load_mmgp_config(config_path):
-    """Load and validate MMGP configuration"""
-    try:
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-        
-        # Validate required fields
-        required_fields = ['models', 'schedule', 'notes']
-        for field in required_fields:
-            if field not in config:
-                raise ValueError(f"Missing required field '{field}' in MMGP config")
-        
-        return config
-    except Exception as e:
-        logger.error(f"Error loading MMGP config: {str(e)}")
-        raise
-
-def get_mac_model_settings(config):
-    """Get settings based on available RAM"""
-    total_ram = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024.**3)  # GB
-    
-    if total_ram >= 64:
-        return config['notes']['memory_optimization']['M3_Max_64GB']['settings']
-    else:
-        return config['notes']['memory_optimization']['M3_Max_32GB']['settings']
-
-def map_precision(precision_str):
-    """Map precision string to correct format"""
-    precision_map = {
-        'float32': 'fp32',
-        'float16': 'fp16',
-        'bfloat16': 'bf16'
-    }
-    return precision_map.get(precision_str, 'fp16')  # Default to fp16 if unknown
+    # Multiple GC cycles
+    for _ in range(3):
+        gc.collect()
 
 def staged_model_loading(models_root_path, args, device):
-    """Load models in stages with memory clearing between each stage"""
+    """Load models in stages with aggressive memory management"""
     try:
-        logger.info("Stage 1: Initial setup...")
-        clear_memory()
+        logger.info("Stage 1: Initial setup and memory cleanup...")
+        free_memory()
         
-        logger.info("Stage 2: Loading model with conservative memory settings...")
-        # Temporarily lower watermark ratio during model loading
-        original_high_ratio = os.getenv('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
-        original_low_ratio = os.getenv('PYTORCH_MPS_LOW_WATERMARK_RATIO')
-        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.3'
-        os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.2'
+        # Set minimal memory limits for loading
+        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
+        os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.0'
         
+        # Force minimal settings
+        args.batch_size = 1
+        args.precision = 'fp16'
+        args.vae_precision = 'fp16'
+        args.text_encoder_precision = 'fp16'
+        args.disable_autocast = False
+        args.vae_tiling = True
+        
+        logger.info("Stage 2: Loading model with unlimited memory...")
         try:
             hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
-                models_root_path, 
+                models_root_path,
                 args=args,
                 device=device
             )
-            clear_memory()
+            
+            # Force synchronization and cleanup
+            if torch.backends.mps.is_available():
+                torch.mps.synchronize()
+            free_memory()
             
             logger.info("Model loaded successfully!")
             return hunyuan_video_sampler
             
         finally:
-            # Restore original watermark ratios
-            if original_high_ratio:
-                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = original_high_ratio
-            if original_low_ratio:
-                os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = original_low_ratio
+            # Set conservative memory settings
+            os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.3'  # Reduced from 0.4
+            os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.2'   # Reduced from 0.3
     
     except Exception as e:
         logger.error(f"Error during model loading: {str(e)}")
-        if "out of memory" in str(e):
-            logger.error("\nMemory error during model loading. Try these steps:")
-            logger.info("1. Close all other applications")
-            logger.info("2. Restart your Python environment")
-            logger.info("3. Set even lower watermark ratios in .env:")
-            logger.info("   PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.2")
-            logger.info("   PYTORCH_MPS_LOW_WATERMARK_RATIO=0.1")
-            logger.info("4. If issues persist, try reducing model precision further")
         raise e
 
 def main():
-    # Check MPS settings first
-    if not check_mps_settings():
-        return
+    # Kill any existing Python processes
+    os.system("pkill -9 Python")
+    time.sleep(2)  # Wait for processes to be killed
+    
+    # Set conservative environment variables
+    os.environ['PYTORCH_MPS_ALLOCATOR_POLICY'] = 'garbage_collection'
+    os.environ['MPS_USE_GUARD_MODE'] = '1'
+    os.environ['MPS_ENABLE_MEMORY_GUARD'] = '1'
+    os.environ['PYTORCH_MPS_SYNC_OPERATIONS'] = '1'
+    os.environ['PYTORCH_MPS_AGGRESSIVE_MEMORY_CLEANUP'] = '1'
+    
+    # New: Set initial conservative memory limits
+    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.3'  # Start with conservative limit
+    os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.2'
 
     # Check if MPS is available
     if not torch.backends.mps.is_available():
@@ -137,37 +101,20 @@ def main():
             print("MPS not available because the current MacOS version is not 12.3+ and/or you do not have an MPS-enabled device")
         return
 
-    # Clear memory before starting
-    clear_memory()
+    # Initial memory cleanup
+    free_memory()
 
     # Parse arguments
     args = parse_args()
     
-    # Handle MMGP mode
-    if args.mmgp_mode:
-        logger.info("Loading MMGP configuration...")
-        mmgp_config = load_mmgp_config(args.mmgp_config)
-        settings = get_mac_model_settings(mmgp_config)
-        
-        # Apply MMGP settings with correct precision mapping
-        precision = map_precision(settings.get('precision', 'float16'))
-        args.precision = precision
-        args.vae_precision = precision
-        args.text_encoder_precision = precision
-        args.disable_autocast = False
-        args.vae_tiling = True
-        
-        logger.info(f"Using precision: {precision}")
-        
-        if 'batch_processing' in settings and settings['batch_processing'] == 'enabled':
-            args.batch_size = 1  # Start conservative
-    else:
-        # Use default memory-efficient settings
-        args.precision = "fp16"
-        args.vae_precision = "fp16"
-        args.text_encoder_precision = "fp16"
-        args.disable_autocast = False
-        args.vae_tiling = True
+    # Force conservative settings
+    args.video_size = [256, 384]  # Minimum size for initial load
+    args.video_length = 33  # Minimum length
+    args.precision = 'fp16'
+    args.vae_precision = 'fp16'
+    args.text_encoder_precision = 'fp16'
+    args.disable_autocast = False
+    args.vae_tiling = True
     
     # Set device to MPS
     device = torch.device("mps")
@@ -176,28 +123,31 @@ def main():
     if not models_root_path.exists():
         raise ValueError(f"`models_root` not exists: {models_root_path}")
     
-    # Create save folder to save the samples
+    # Create save folder
     save_path = args.save_path if args.save_path_suffix=="" else f'{args.save_path}_{args.save_path_suffix}'
-    if not os.path.exists(args.save_path):
-        os.makedirs(save_path, exist_ok=True)
+    os.makedirs(save_path, exist_ok=True)
 
     try:
         # Load models with staged loading
         hunyuan_video_sampler = staged_model_loading(models_root_path, args, device)
-        
-        # Get the updated args
         args = hunyuan_video_sampler.args
 
         # Clear memory before inference
-        clear_memory()
+        free_memory()
 
-        logger.info("Starting video generation with chunked approach...")
+        logger.info("Starting video generation with optimized chunked approach...")
         
         # Calculate optimal chunk size based on available memory
-        total_ram = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024.**3)
-        chunk_size = 16 if total_ram < 64 else 32  # Smaller chunks for lower RAM
+        total_ram = psutil.virtual_memory().total / (1024**3)  # Total RAM in GB
+        if total_ram >= 64:
+            chunk_size = 8  # Reduced from 16 for better memory management
+            overlap = 2    # Reduced from 4 but still maintains smooth transitions
+        else:
+            chunk_size = 4  # Minimal chunk size
+            overlap = 1    # Minimal overlap
         
-        # Generate video using chunked approach
+        logger.info(f"Using chunk size: {chunk_size} frames with {overlap} frame overlap")
+        
         outputs = generate_video_chunks(
             model=hunyuan_video_sampler,
             prompt=args.prompt,
@@ -205,7 +155,7 @@ def main():
             width=args.video_size[1],
             video_length=args.video_length,
             chunk_size=chunk_size,
-            overlap=4,
+            overlap=overlap,
             seed=args.seed,
             negative_prompt=args.neg_prompt,
             infer_steps=25,
@@ -226,19 +176,13 @@ def main():
             save_videos_grid(sample, save_path, fps=24)
             logger.info(f'Sample saved to: {save_path}')
 
-    except RuntimeError as e:
-        if "out of memory" in str(e):
-            logger.error("\nOut of memory error occurred. Try these steps:")
-            logger.info("1. Close all other applications")
-            logger.info("2. Reduce chunk size (currently: {chunk_size})")
-            logger.info("3. Reduce video resolution (e.g., --video-size 384 640)")
-            logger.info("4. Reduce video length")
-            logger.info("5. Lower watermark ratios in .env")
-            logger.info("6. If issues persist, try restarting your Python environment")
+    except Exception as e:
+        logger.error(f"Error occurred: {str(e)}")
         raise e
     finally:
-        # Clean up memory
-        clear_memory()
+        # Final cleanup with multiple cycles
+        for _ in range(3):
+            free_memory()
 
 if __name__ == "__main__":
     main()

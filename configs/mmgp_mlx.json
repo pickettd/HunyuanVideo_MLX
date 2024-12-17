@@ -18,7 +18,7 @@
                 "settings": {
                     "540p_steps": 35,
                     "720p_steps": 15,
-                    "mps_watermark_ratio": 0.8,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             },
@@ -27,7 +27,7 @@
                 "settings": {
                     "540p_steps": 30,
                     "720p_steps": 20,
-                    "mps_watermark_ratio": 0.7,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             },
@@ -36,7 +36,7 @@
                 "settings": {
                     "540p_steps": 25,
                     "720p_steps": 25,
-                    "mps_watermark_ratio": 0.7,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             },
@@ -45,7 +45,7 @@
                 "settings": {
                     "540p_steps": 30,
                     "720p_steps": 20,
-                    "mps_watermark_ratio": 0.7,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             },
@@ -54,7 +54,7 @@
                 "settings": {
                     "540p_steps": 25,
                     "720p_steps": 25,
-                    "mps_watermark_ratio": 0.7,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             },
@@ -63,7 +63,7 @@
                 "settings": {
                     "540p_steps": 20,
                     "720p_steps": 30,
-                    "mps_watermark_ratio": 0.7,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             },
@@ -72,7 +72,7 @@
                 "settings": {
                     "540p_steps": 25,
                     "720p_steps": 25,
-                    "mps_watermark_ratio": 0.7,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             },
@@ -81,7 +81,7 @@
                 "settings": {
                     "540p_steps": 20,
                     "720p_steps": 30,
-                    "mps_watermark_ratio": 0.7,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             },
@@ -89,9 +89,9 @@
                 "recommendation": "Direct 720p generation",
                 "settings": {
                     "720p_steps": 40,
-                    "mps_watermark_ratio": 0.8,
-                    "precision": "float32",
-                    "batch_processing": "enabled"
+                    "mps_watermark_ratio": 0.3,
+                    "precision": "float16",
+                    "batch_processing": "disabled"
                 }
             },
             "M3_Ultra": {
@@ -99,7 +99,7 @@
                 "settings": {
                     "540p_steps": 15,
                     "720p_steps": 35,
-                    "mps_watermark_ratio": 0.7,
+                    "mps_watermark_ratio": 0.3,
                     "precision": "float16"
                 }
             }
@@ -107,30 +107,30 @@
         "mlx_optimization": {
             "precision_options": {
                 "float16": {
-                    "description": "Default precision, best balance of speed and quality",
-                    "recommended_for": ["All M-series chips with 32GB RAM"]
+                    "description": "Default precision for memory efficiency",
+                    "recommended_for": ["All M-series chips"]
                 },
                 "float32": {
-                    "description": "Higher precision, better quality",
-                    "recommended_for": ["M3 Max/Ultra with 64GB+ RAM"]
+                    "description": "Higher precision but requires more memory",
+                    "recommended_for": ["Only for specific high-memory tasks"]
                 }
             },
             "mps_settings": {
                 "high_performance": {
-                    "watermark_ratio": 0.8,
-                    "suitable_for": "64GB+ RAM configurations"
+                    "watermark_ratio": 0.3,
+                    "suitable_for": "All configurations"
                 },
                 "balanced": {
-                    "watermark_ratio": 0.7,
-                    "suitable_for": "32GB RAM configurations"
+                    "watermark_ratio": 0.2,
+                    "suitable_for": "Conservative operation"
                 }
             },
             "memory_management": {
-                "clear_interval": "per_model",
-                "cache_strategy": "dynamic",
+                "clear_interval": "per_chunk",
+                "cache_strategy": "aggressive",
                 "batch_processing": {
-                    "enabled": "64GB+ RAM configurations",
-                    "disabled": "32GB RAM configurations"
+                    "enabled": "Never - use chunked processing",
+                    "disabled": "Default for all configurations"
                 }
             }
         },
@@ -141,7 +141,7 @@
                 "guidance_scale": 6.0,
                 "mlx_optimizations": {
                     "memory_efficient": true,
-                    "batch_processing": "enabled"
+                    "batch_processing": "disabled"
                 }
             },
             "refinement_phase": {
@@ -149,18 +149,18 @@
                 "purpose": "Adds fine details and improves quality",
                 "guidance_scale": 7.5,
                 "mlx_optimizations": {
-                    "memory_efficient": false,
-                    "batch_processing": "auto"
+                    "memory_efficient": true,
+                    "batch_processing": "disabled"
                 }
             },
             "direct_720p": {
                 "model": "720p",
-                "purpose": "High-quality direct generation for 64GB+ RAM",
+                "purpose": "High-quality generation with memory optimization",
                 "guidance_scale": 7.0,
                 "mlx_optimizations": {
-                    "memory_efficient": false,
-                    "batch_processing": "enabled",
-                    "precision": "float32"
+                    "memory_efficient": true,
+                    "batch_processing": "disabled",
+                    "precision": "float16"
                 }
             }
         }
