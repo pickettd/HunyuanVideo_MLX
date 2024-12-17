@@ -1,130 +1,149 @@
 import math
-from typing import Optional
-
 import torch
 import torch.nn.functional as F
-from einops import rearrange
 
+MEMORY_LAYOUT = {
+    "torch": (
+        lambda x: x.transpose(1, 2),
+        lambda x: x.transpose(1, 2),
+    ),
+    "vanilla": (
+        lambda x: x.transpose(1, 2),
+        lambda x: x.transpose(1, 2),
+    ),
+}
 
-def attention(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    mask: Optional[torch.Tensor] = None,
-    causal: bool = False,
-    dropout_p: float = 0.0,
-    training: bool = True,
-    needs_weights: bool = False,
-    key_padding_mask: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-    """
-    Implements the scaled dot product attention with softmax.
+def get_cu_seqlens(text_mask, img_len):
+    """Calculate cu_seqlens_q, cu_seqlens_kv using text_mask and img_len
+
     Args:
-        query: Query tensor of shape (B, H, L, E)
-        key: Key tensor of shape (B, H, S, E)
-        value: Value tensor of shape (B, H, S, V)
-        mask: Optional mask tensor of shape (L, S)
-        causal: If True, applies causal attention masking
-        dropout_p: Dropout probability
-        training: Whether in training mode
-        needs_weights: If True, returns attention weights
-        key_padding_mask: Optional mask tensor of shape (B, S)
+        text_mask (torch.Tensor): the mask of text
+        img_len (int): the length of image
+
     Returns:
-        output: Attention output tensor
-        weights: Optional attention weights if needs_weights is True
-    """
-    B, H, L, E = query.shape
-    _, _, S, D = value.shape
-    
-    scale = math.sqrt(E)
-    
-    query = query / scale
-    
-    # (B, H, L, E) x (B, H, E, S) -> (B, H, L, S)
-    attn = torch.matmul(query, key.transpose(-2, -1))
-    
-    if mask is not None:
-        attn = attn + mask
-        
-    if causal:
-        causal_mask = torch.triu(torch.ones(L, S, dtype=torch.bool, device=query.device), diagonal=1)
-        attn = attn.masked_fill(causal_mask, float('-inf'))
-        
-    if key_padding_mask is not None:
-        attn = attn.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2), float('-inf'))
-    
-    attn = F.softmax(attn, dim=-1)
-    
-    if dropout_p > 0.0 and training:
-        attn = F.dropout(attn, p=dropout_p)
-        
-    # (B, H, L, S) x (B, H, S, D) -> (B, H, L, D)
-    output = torch.matmul(attn, value)
-    
-    if needs_weights:
-        return output, attn
-    return output
-
-
-def parallel_attention(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    mask: Optional[torch.Tensor] = None,
-    causal: bool = False,
-    dropout_p: float = 0.0,
-    training: bool = True,
-    needs_weights: bool = False,
-    key_padding_mask: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-    """
-    Parallel implementation of scaled dot product attention.
-    Uses the same interface as the regular attention function.
-    """
-    B, H, L, E = query.shape
-    _, _, S, D = value.shape
-    
-    scale = math.sqrt(E)
-    query = query / scale
-    
-    # Parallel attention computation
-    attn = torch.einsum('bhle,bhse->bhls', query, key)
-    
-    if mask is not None:
-        attn = attn + mask
-        
-    if causal:
-        causal_mask = torch.triu(torch.ones(L, S, dtype=torch.bool, device=query.device), diagonal=1)
-        attn = attn.masked_fill(causal_mask, float('-inf'))
-        
-    if key_padding_mask is not None:
-        attn = attn.masked_fill(key_padding_mask.unsqueeze(1).unsqueeze(2), float('-inf'))
-    
-    attn = F.softmax(attn, dim=-1)
-    
-    if dropout_p > 0.0 and training:
-        attn = F.dropout(attn, p=dropout_p)
-        
-    output = torch.einsum('bhls,bhsd->bhld', attn, value)
-    
-    if needs_weights:
-        return output, attn
-    return output
-
-
-def get_cu_seqlens(text_mask, img_seq_len):
-    """
-    Compute cumulative sequence lengths for batched attention.
-    Args:
-        text_mask: Text attention mask of shape (B, L)
-        img_seq_len: Length of image sequence
-    Returns:
-        cu_seqlens: Cumulative sequence lengths tensor
+        torch.Tensor: the calculated cu_seqlens
     """
     batch_size = text_mask.shape[0]
+    text_len = text_mask.sum(dim=1)
+    max_len = text_mask.shape[1] + img_len
     device = text_mask.device
+
     cu_seqlens = torch.zeros([2 * batch_size + 1], dtype=torch.int32, device=device)
+
     for i in range(batch_size):
-        cu_seqlens[2 * i + 1] = cu_seqlens[2 * i] + text_mask[i].sum()
-        cu_seqlens[2 * i + 2] = cu_seqlens[2 * i + 1] + img_seq_len
+        s = text_len[i] + img_len
+        s1 = i * max_len + s
+        s2 = (i + 1) * max_len
+        cu_seqlens[2 * i + 1] = s1
+        cu_seqlens[2 * i + 2] = s2
+
     return cu_seqlens
+
+def attention(
+    q,
+    k,
+    v,
+    mode="vanilla",
+    drop_rate=0,
+    attn_mask=None,
+    causal=False,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
+    max_seqlen_q=None,
+    max_seqlen_kv=None,
+    batch_size=1,
+):
+    """
+    Perform QKV self attention.
+
+    Args:
+        q (torch.Tensor): Query tensor with shape [b, s, a, d], where a is the number of heads
+        k (torch.Tensor): Key tensor with shape [b, s1, a, d]
+        v (torch.Tensor): Value tensor with shape [b, s1, a, d]
+        mode (str): Attention mode. Only 'torch' and 'vanilla' supported on MPS
+        drop_rate (float): Dropout rate in attention map
+        attn_mask (torch.Tensor): Attention mask with shape [b, a, s, s1]
+        causal (bool): Whether to use causal attention
+        cu_seqlens_q (torch.Tensor): Not used on MPS
+        cu_seqlens_kv (torch.Tensor): Not used on MPS
+        max_seqlen_q (int): Not used on MPS
+        max_seqlen_kv (int): Not used on MPS
+        batch_size (int): Batch size
+
+    Returns:
+        torch.Tensor: Output tensor after self attention with shape [b, s, ad]
+    """
+    pre_attn_layout, post_attn_layout = MEMORY_LAYOUT[mode]
+    q = pre_attn_layout(q)
+    k = pre_attn_layout(k)
+    v = pre_attn_layout(v)
+
+    if mode == "torch":
+        if attn_mask is not None and attn_mask.dtype != torch.bool:
+            attn_mask = attn_mask.to(q.dtype)
+        x = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal
+        )
+    elif mode == "vanilla":
+        scale_factor = 1 / math.sqrt(q.size(-1))
+
+        b, a, s, _ = q.shape
+        s1 = k.size(2)
+        attn_bias = torch.zeros(b, a, s, s1, dtype=q.dtype, device=q.device)
+        
+        if causal:
+            assert attn_mask is None, "Causal mask and attn_mask cannot be used together"
+            temp_mask = torch.ones(b, a, s, s, dtype=torch.bool, device=q.device).tril(diagonal=0)
+            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+            attn_bias = attn_bias.to(q.dtype)
+
+        if attn_mask is not None:
+            if attn_mask.dtype == torch.bool:
+                attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+            else:
+                attn_bias += attn_mask
+
+        attn = (q @ k.transpose(-2, -1)) * scale_factor
+        attn += attn_bias
+        attn = attn.softmax(dim=-1)
+        if drop_rate > 0:
+            attn = torch.dropout(attn, p=drop_rate, train=True)
+        x = attn @ v
+    else:
+        raise NotImplementedError(f"Unsupported attention mode on MPS: {mode}")
+
+    x = post_attn_layout(x)
+    b, s, a, d = x.shape
+    out = x.reshape(b, s, -1)
+    return out
+
+def parallel_attention(
+    q,
+    k,
+    v,
+    mode="vanilla",
+    drop_rate=0,
+    attn_mask=None,
+    causal=False,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
+    max_seqlen_q=None,
+    max_seqlen_kv=None,
+    batch_size=1,
+):
+    """
+    Simplified parallel attention implementation for MPS.
+    Uses the same interface as regular attention for compatibility.
+    """
+    return attention(
+        q, k, v,
+        mode=mode,
+        drop_rate=drop_rate,
+        attn_mask=attn_mask,
+        causal=causal,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_kv=max_seqlen_kv,
+        batch_size=batch_size
+    )
