@@ -11,6 +11,7 @@ from hyvideo.inference import HunyuanVideoSampler
 import torch
 import argparse
 import gc
+import json
 
 def add_mmgp_args(parser):
     group = parser.add_argument_group(title="MMGP args")
@@ -69,6 +70,32 @@ def clear_memory():
     gc.collect()
     # Additional garbage collection cycle
     gc.collect()
+
+def load_mmgp_config(config_path):
+    """Load and validate MMGP configuration"""
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        
+        # Validate required fields
+        required_fields = ['models', 'schedule', 'notes']
+        for field in required_fields:
+            if field not in config:
+                raise ValueError(f"Missing required field '{field}' in MMGP config")
+        
+        return config
+    except Exception as e:
+        logger.error(f"Error loading MMGP config: {str(e)}")
+        raise
+
+def get_mac_model_settings(config):
+    """Get settings based on available RAM"""
+    total_ram = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024.**3)  # GB
+    
+    if total_ram >= 64:
+        return config['notes']['memory_optimization']['M3_Max_64GB']['settings']
+    else:
+        return config['notes']['memory_optimization']['M3_Max_32GB']['settings']
 
 def staged_model_loading(models_root_path, args, device):
     """Load models in stages with memory clearing between each stage"""
@@ -129,20 +156,40 @@ def main():
     # Clear memory before starting
     clear_memory()
 
-    # Parse arguments
+    # Create base argument parser
     parser = argparse.ArgumentParser(description="HunyuanVideo inference script")
+    
+    # Add MMGP arguments first
     parser = add_mmgp_args(parser)
-    args = parse_args(namespace=parser.parse_args([]))
     
-    # Enable MMGP mode by default for memory optimization
-    args.mmgp_mode = True
+    # Parse known args to get MMGP settings
+    known_args, _ = parser.parse_known_args()
     
-    # Use memory-efficient settings
-    args.precision = "fp16"  # Use float16 for memory efficiency
-    args.vae_precision = "fp16"
-    args.text_encoder_precision = "fp16"
-    args.disable_autocast = False  # Enable autocast for memory efficiency
-    args.vae_tiling = True  # Enable VAE tiling
+    # Parse all arguments
+    args = parse_args(namespace=known_args)
+    
+    # Handle MMGP mode
+    if args.mmgp_mode:
+        logger.info("Loading MMGP configuration...")
+        mmgp_config = load_mmgp_config(args.mmgp_config)
+        settings = get_mac_model_settings(mmgp_config)
+        
+        # Apply MMGP settings
+        args.precision = settings.get('precision', 'float16')
+        args.vae_precision = settings.get('precision', 'float16')
+        args.text_encoder_precision = settings.get('precision', 'float16')
+        args.disable_autocast = False
+        args.vae_tiling = True
+        
+        if 'batch_processing' in settings and settings['batch_processing'] == 'enabled':
+            args.batch_size = 1  # Start conservative
+    else:
+        # Use default memory-efficient settings
+        args.precision = "fp16"
+        args.vae_precision = "fp16"
+        args.text_encoder_precision = "fp16"
+        args.disable_autocast = False
+        args.vae_tiling = True
     
     # Set device to MPS
     device = torch.device("mps")
