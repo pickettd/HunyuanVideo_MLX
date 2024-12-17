@@ -5,6 +5,7 @@ from loguru import logger
 from datetime import datetime
 
 from hyvideo.utils.file_utils import save_videos_grid
+from hyvideo.utils.chunked_generation import generate_video_chunks, clear_memory
 from hyvideo.config import parse_args
 from hyvideo.inference import HunyuanVideoSampler
 
@@ -16,12 +17,13 @@ import json
 def check_mps_settings():
     """Verify MPS settings before running"""
     required_vars = {
-        'PYTORCH_MPS_HIGH_WATERMARK_RATIO': '0.4',
-        'PYTORCH_MPS_LOW_WATERMARK_RATIO': '0.3',
+        'PYTORCH_MPS_HIGH_WATERMARK_RATIO': '0.3',  # More conservative default
+        'PYTORCH_MPS_LOW_WATERMARK_RATIO': '0.2',
         'PYTORCH_MPS_ALLOCATOR_POLICY': 'garbage_collection',
         'MPS_USE_GUARD_MODE': '1',
         'MPS_ENABLE_MEMORY_GUARD': '1',
-        'PYTORCH_MPS_SYNC_OPERATIONS': '1'
+        'PYTORCH_MPS_SYNC_OPERATIONS': '1',
+        'PYTORCH_MPS_AGGRESSIVE_MEMORY_CLEANUP': '1'
     }
     
     for var, default_value in required_vars.items():
@@ -43,18 +45,6 @@ def check_mps_settings():
         return False
     
     return True
-
-def clear_memory():
-    """Aggressively clear memory"""
-    if torch.backends.mps.is_available():
-        # Force synchronous operations to complete
-        torch.mps.synchronize()
-        # Clear MPS cache
-        torch.mps.empty_cache()
-    # Force garbage collection
-    gc.collect()
-    # Additional garbage collection cycle
-    gc.collect()
 
 def load_mmgp_config(config_path):
     """Load and validate MMGP configuration"""
@@ -101,8 +91,8 @@ def staged_model_loading(models_root_path, args, device):
         # Temporarily lower watermark ratio during model loading
         original_high_ratio = os.getenv('PYTORCH_MPS_HIGH_WATERMARK_RATIO')
         original_low_ratio = os.getenv('PYTORCH_MPS_LOW_WATERMARK_RATIO')
-        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.4'
-        os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.3'
+        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.3'
+        os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.2'
         
         try:
             hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(
@@ -129,8 +119,8 @@ def staged_model_loading(models_root_path, args, device):
             logger.info("1. Close all other applications")
             logger.info("2. Restart your Python environment")
             logger.info("3. Set even lower watermark ratios in .env:")
-            logger.info("   PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.3")
-            logger.info("   PYTORCH_MPS_LOW_WATERMARK_RATIO=0.2")
+            logger.info("   PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.2")
+            logger.info("   PYTORCH_MPS_LOW_WATERMARK_RATIO=0.1")
             logger.info("4. If issues persist, try reducing model precision further")
         raise e
 
@@ -201,22 +191,31 @@ def main():
         # Clear memory before inference
         clear_memory()
 
-        logger.info("Starting video generation...")
-        # Start sampling with optimized settings
-        outputs = hunyuan_video_sampler.predict(
-            prompt=args.prompt, 
+        logger.info("Starting video generation with chunked approach...")
+        
+        # Calculate optimal chunk size based on available memory
+        total_ram = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024.**3)
+        chunk_size = 16 if total_ram < 64 else 32  # Smaller chunks for lower RAM
+        
+        # Generate video using chunked approach
+        outputs = generate_video_chunks(
+            model=hunyuan_video_sampler,
+            prompt=args.prompt,
             height=args.video_size[0],
             width=args.video_size[1],
             video_length=args.video_length,
+            chunk_size=chunk_size,
+            overlap=4,
             seed=args.seed,
             negative_prompt=args.neg_prompt,
-            infer_steps=25,  # Further reduced steps for memory efficiency
-            guidance_scale=7.0,  # Balanced guidance scale
-            num_videos_per_prompt=1,  # Generate one video at a time
+            infer_steps=25,
+            guidance_scale=7.0,
+            num_videos_per_prompt=1,
             flow_shift=args.flow_shift,
-            batch_size=1,  # Process one batch at a time
+            batch_size=1,
             embedded_guidance_scale=args.embedded_cfg_scale
         )
+        
         samples = outputs['samples']
         
         # Save samples
@@ -231,10 +230,11 @@ def main():
         if "out of memory" in str(e):
             logger.error("\nOut of memory error occurred. Try these steps:")
             logger.info("1. Close all other applications")
-            logger.info("2. Reduce video resolution (e.g., --video-size 384 640)")
-            logger.info("3. Reduce video length")
-            logger.info("4. Lower watermark ratios in .env")
-            logger.info("5. If issues persist, try restarting your Python environment")
+            logger.info("2. Reduce chunk size (currently: {chunk_size})")
+            logger.info("3. Reduce video resolution (e.g., --video-size 384 640)")
+            logger.info("4. Reduce video length")
+            logger.info("5. Lower watermark ratios in .env")
+            logger.info("6. If issues persist, try restarting your Python environment")
         raise e
     finally:
         # Clean up memory

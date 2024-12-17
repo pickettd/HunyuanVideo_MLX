@@ -28,27 +28,27 @@ Before running `download_weights.py`, make sure you have:
 1. A Hugging Face account and access token (get it from https://huggingface.co/settings/tokens)
 2. Created a `.env` file with your token and memory settings
 
-## Memory-Optimized Generation (Recommended)
+## Memory-Optimized Generation (New!)
 
-Using MMGP (Mixed Model Generation Pipeline) mode for optimal memory management:
+The system now uses a chunked generation approach for better memory efficiency:
 
 ### For 32GB RAM Macs (M1/M2/M3 Pro/Max):
 ```bash
-# Conservative settings for stable generation
-python sample_video_mps.py \
-    --mmgp-mode \
-    --mmgp-config configs/mmgp_mlx.json \
-    --video-size 384 640 \
-    --prompt "your prompt here" \
-    --video-length 16
-
-# Medium quality once stable
+# Memory-efficient settings (recommended)
 python sample_video_mps.py \
     --mmgp-mode \
     --mmgp-config configs/mmgp_mlx.json \
     --video-size 544 960 \
     --prompt "your prompt here" \
-    --video-length 16
+    --video-length 65
+
+# Medium quality once stable
+python sample_video_mps.py \
+    --mmgp-mode \
+    --mmgp-config configs/mmgp_mlx.json \
+    --video-size 720 720 \
+    --prompt "your prompt here" \
+    --video-length 65
 ```
 
 ### For 64GB+ RAM Macs (M3 Max/Ultra):
@@ -59,49 +59,75 @@ python sample_video_mps.py \
     --mmgp-config configs/mmgp_mlx.json \
     --video-size 720 1280 \
     --prompt "your prompt here" \
-    --video-length 24
+    --video-length 129
 ```
 
-MMGP mode automatically:
-- Detects your Mac's RAM and applies optimal settings
-- Uses appropriate precision (fp16/fp32)
-- Manages memory watermarks
-- Enables VAE tiling
-- Provides staged model loading
+### Memory Optimization Features
+
+The new chunked generation system provides:
+- Automatic chunk size calculation based on available RAM
+- Frame overlap for smooth transitions between chunks
+- Dynamic precision adjustment
+- Aggressive memory cleanup
+- Progress tracking and detailed feedback
+
+### Resolution Guidelines
+
+Start with smaller resolutions and gradually increase based on stability:
+
+| RAM   | Recommended Resolution | Max Video Length |
+|-------|----------------------|------------------|
+| 32GB  | 544x960 (540p)      | 65 frames       |
+| 32GB  | 720x720 (square)    | 65 frames       |
+| 64GB  | 720x1280 (720p)     | 129 frames      |
+| 64GB+ | 1280x720 (720p)     | 129 frames      |
 
 ## Memory Management Tips
 
 ### Environment Settings
 ```bash
 # Conservative settings (recommended for first run)
-PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.4
-PYTORCH_MPS_LOW_WATERMARK_RATIO=0.3
+PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.3
+PYTORCH_MPS_LOW_WATERMARK_RATIO=0.2
 
 # After successful generation, can try:
 # For 32GB RAM:
-PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.6
-PYTORCH_MPS_LOW_WATERMARK_RATIO=0.5
+PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.4
+PYTORCH_MPS_LOW_WATERMARK_RATIO=0.3
 
 # For 64GB+ RAM:
-PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.8
-PYTORCH_MPS_LOW_WATERMARK_RATIO=0.7
+PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.6
+PYTORCH_MPS_LOW_WATERMARK_RATIO=0.5
 ```
 
-### Video Size Guidelines
-- Start with smaller sizes and gradually increase:
-  * Initial testing: 384x640
-  * Medium quality: 544x960
-  * High quality: 720x1280 (64GB+ RAM only)
+### Optimization Steps
 
-### Video Length
-- Keep video length as 4n+1 (5, 9, 13, 17, etc.)
-- Start with shorter lengths (16 frames) and increase if stable
-- Longer videos (24+ frames) recommended only for 64GB+ RAM
+If you encounter memory issues:
+1. Start with 540p resolution (544x960)
+2. Use shorter video length (65 frames)
+3. Close other applications
+4. Clear Python environment between runs
+5. Monitor resources with `python monitor_resources.py`
+6. Gradually increase settings once stable
+
+### Web Interface
+
+The included Gradio interface provides:
+- Memory-optimized default settings
+- Resolution recommendations
+- Real-time feedback
+- Detailed error messages with optimization suggestions
+
+Run the web interface:
+```bash
+python gradio_server.py
+```
 
 ## Key Features
 
 - **Mac-Native Performance**: Built specifically for Apple Silicon using Metal acceleration
 - **Memory Optimization**: 
+  * Chunked video generation
   * MMGP (Mixed Model Generation Pipeline)
   * Automatic hardware detection
   * Dynamic precision adjustment
@@ -114,15 +140,15 @@ PYTORCH_MPS_LOW_WATERMARK_RATIO=0.7
 
 ### M3 Max/Ultra with 64GB+ RAM
 - Direct 720p generation with float32 precision
-- Higher watermark ratio (0.8) supported
-- Batch processing enabled
-- 40 inference steps for optimal quality
+- Higher watermark ratio (0.6) supported
+- Larger chunk sizes for faster processing
+- 129-frame videos supported
 
 ### Other M-series with 32GB RAM
 - Recommended 544x960 or smaller
 - Float16 precision for memory efficiency
-- Conservative watermark ratio (0.4-0.6)
-- Memory-efficient processing
+- Conservative watermark ratio (0.3-0.4)
+- Memory-efficient chunked processing
 
 ### Minimum Requirements
 - Apple Silicon Mac (M1/M2/M3)
@@ -134,10 +160,11 @@ PYTORCH_MPS_LOW_WATERMARK_RATIO=0.7
 
 If you encounter memory issues:
 1. Close all other applications
-2. Use MMGP mode with conservative settings
-3. Reduce video resolution and length
+2. Use recommended resolution for your RAM
+3. Start with shorter video length
 4. Clear Python environment between runs
 5. Monitor resources with `python monitor_resources.py`
+6. Check logs for specific optimization suggestions
 
 ## License
 
