@@ -39,6 +39,31 @@ def get_cu_seqlens(text_mask, img_len):
 
     return cu_seqlens
 
+def chunked_attention(q, k, v, chunk_size=1024):
+    """
+    Memory-efficient attention computation by processing in chunks
+    """
+    batch_size, n_heads, seq_len, head_dim = q.shape
+    value_len = k.shape[2]
+    
+    scale = 1 / math.sqrt(head_dim)
+    q = q * scale
+    
+    # Process attention in chunks to save memory
+    out = torch.zeros_like(q)
+    for i in range(0, seq_len, chunk_size):
+        chunk_end = min(i + chunk_size, seq_len)
+        
+        # Compute attention scores for this chunk
+        scores = torch.matmul(q[:, :, i:chunk_end], k.transpose(-2, -1))  # [B, H, chunk, V]
+        scores = F.softmax(scores, dim=-1)
+        
+        # Apply attention to values
+        chunk_out = torch.matmul(scores, v)  # [B, H, chunk, D]
+        out[:, :, i:chunk_end] = chunk_out
+        
+    return out
+
 def attention(
     q,
     k,
@@ -54,7 +79,7 @@ def attention(
     batch_size=1,
 ):
     """
-    Perform QKV self attention.
+    Perform QKV self attention with memory-efficient implementation.
 
     Args:
         q (torch.Tensor): Query tensor with shape [b, s, a, d], where a is the number of heads
@@ -85,30 +110,22 @@ def attention(
             q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal
         )
     elif mode == "vanilla":
-        scale_factor = 1 / math.sqrt(q.size(-1))
-
-        b, a, s, _ = q.shape
-        s1 = k.size(2)
-        attn_bias = torch.zeros(b, a, s, s1, dtype=q.dtype, device=q.device)
+        # Use chunked attention to save memory
+        x = chunked_attention(q, k, v)
         
         if causal:
-            assert attn_mask is None, "Causal mask and attn_mask cannot be used together"
-            temp_mask = torch.ones(b, a, s, s, dtype=torch.bool, device=q.device).tril(diagonal=0)
-            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
-            attn_bias = attn_bias.to(q.dtype)
-
+            # Apply causal mask after attention
+            causal_mask = torch.triu(torch.ones(q.size(2), k.size(2), dtype=torch.bool, device=q.device), diagonal=1)
+            x = x.masked_fill(causal_mask.unsqueeze(0).unsqueeze(0), 0)
+            
         if attn_mask is not None:
             if attn_mask.dtype == torch.bool:
-                attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+                x = x.masked_fill(~attn_mask, 0)
             else:
-                attn_bias += attn_mask
-
-        attn = (q @ k.transpose(-2, -1)) * scale_factor
-        attn += attn_bias
-        attn = attn.softmax(dim=-1)
+                x = x + attn_mask
+                
         if drop_rate > 0:
-            attn = torch.dropout(attn, p=drop_rate, train=True)
-        x = attn @ v
+            x = F.dropout(x, p=drop_rate, training=True)
     else:
         raise NotImplementedError(f"Unsupported attention mode on MPS: {mode}")
 
@@ -132,7 +149,7 @@ def parallel_attention(
     batch_size=1,
 ):
     """
-    Simplified parallel attention implementation for MPS.
+    Memory-efficient parallel attention implementation for MPS.
     Uses the same interface as regular attention for compatibility.
     """
     return attention(
