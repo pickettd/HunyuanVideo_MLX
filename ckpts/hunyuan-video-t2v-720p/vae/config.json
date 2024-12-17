@@ -1,0 +1,23 @@
+{
+    "_class_name": "AutoencoderKLCausal3D",
+    "act_fn": "silu",
+    "block_out_channels": [128, 256, 512, 512],
+    "down_block_types": [
+        "DownEncoderBlockCausal3D",
+        "DownEncoderBlockCausal3D",
+        "DownEncoderBlockCausal3D",
+        "DownEncoderBlockCausal3D"
+    ],
+    "in_channels": 3,
+    "latent_channels": 16,
+    "layers_per_block": 2,
+    "norm_num_groups": 32,
+    "out_channels": 3,
+    "sample_size": 128,
+    "up_block_types": [
+        "UpDecoderBlockCausal3D",
+        "UpDecoderBlockCausal3D",
+        "UpDecoderBlockCausal3D",
+        "UpDecoderBlockCausal3D"
+    ]
+}
