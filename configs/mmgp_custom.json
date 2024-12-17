@@ -1,0 +1,57 @@
+{
+    "models": {
+        "model_540p": "ckpts/hunyuan-video-t2v-540p",
+        "model_720p": "ckpts/hunyuan-video-t2v-720p"
+    },
+    "schedule": [
+        {
+            "model": "model_540p",
+            "start_step": 0,
+            "end_step": 35,
+            "description": "Initial generation with 540p model for memory efficiency"
+        },
+        {
+            "model": "model_720p",
+            "start_step": 35,
+            "end_step": 50,
+            "description": "Final refinement with 720p model for higher quality"
+        }
+    ],
+    "notes": {
+        "memory_optimization": {
+            "M3_Max_64GB": {
+                "recommendation": "Memory optimized configuration",
+                "settings": {
+                    "540p_steps": 35,
+                    "720p_steps": 15,
+                    "mps_watermark_ratio": 0.0,
+                    "precision": "float16",
+                    "vae_precision": "float16",
+                    "text_encoder_precision": "float16"
+                }
+            }
+        },
+        "quality_tips": {
+            "initial_phase": {
+                "model": "540p",
+                "purpose": "Handles basic composition and motion",
+                "guidance_scale": 6.0,
+                "mlx_optimizations": {
+                    "memory_efficient": true,
+                    "batch_processing": "enabled",
+                    "precision": "float16"
+                }
+            },
+            "refinement_phase": {
+                "model": "720p",
+                "purpose": "Adds fine details and improves quality",
+                "guidance_scale": 7.5,
+                "mlx_optimizations": {
+                    "memory_efficient": true,
+                    "batch_processing": "enabled",
+                    "precision": "float16"
+                }
+            }
+        }
+    }
+}

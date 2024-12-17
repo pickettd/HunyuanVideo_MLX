@@ -52,21 +52,33 @@ def check_model_weights():
     print("\n=== Model Weights ===")
     ckpts_dir = Path("ckpts")
     
+    # Check for main model and VAE
     required_files = [
         "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt",
-        "vae/884-16c-hy.pt",
-        "text_encoder/llm.pt"
+        "hunyuan-video-t2v-720p/vae/pytorch_model.pt"
     ]
+    
+    # Check for text encoder files (split into multiple parts)
+    text_encoder_files = [f"text_encoder/model-{i:05d}-of-00007.safetensors" for i in range(1, 8)]
+    required_files.extend(text_encoder_files)
     
     missing_files = []
     for file in required_files:
         if not (ckpts_dir / file).exists():
-            missing_files.append(file)
+            # For text encoder files, only report if all parts are missing
+            if not file.startswith("text_encoder/model-") or all(
+                not (ckpts_dir / f).exists() for f in text_encoder_files
+            ):
+                missing_files.append(file)
     
     if missing_files:
         print("\n⚠️  Missing model weights:")
         for file in missing_files:
-            print(f"    - {file}")
+            if not file.startswith("text_encoder/model-"):
+                print(f"    - {file}")
+            elif all(f.startswith("text_encoder/model-") for f in missing_files):
+                print("    - text_encoder model files")
+                break
         print("\nRun 'python download_weights.py' to download the required model weights")
     else:
         print("✓ All required model weights are present")

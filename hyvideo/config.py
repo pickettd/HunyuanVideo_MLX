@@ -12,6 +12,7 @@ def parse_args(namespace=None):
     parser = add_denoise_schedule_args(parser)
     parser = add_inference_args(parser)
     parser = add_parallel_args(parser)
+    parser = add_mmgp_args(parser)  # Add MMGP arguments
 
     args = parser.parse_args(namespace=namespace)
     args = sanity_check_args(args)
@@ -372,6 +373,25 @@ def add_parallel_args(parser: argparse.ArgumentParser):
         help="Ulysses degree.",
     )
 
+    return parser
+
+
+def add_mmgp_args(parser: argparse.ArgumentParser):
+    """Add Mixed Model Generation Pipeline (MMGP) arguments"""
+    group = parser.add_argument_group(title="MMGP args")
+    
+    group.add_argument(
+        "--mmgp-mode",
+        action="store_true",
+        help="Enable MMGP (Mixed Model Generation Pipeline) mode",
+    )
+    group.add_argument(
+        "--mmgp-config",
+        type=str,
+        default="configs/mmgp_mlx.json",
+        help="Path to MMGP configuration file",
+    )
+    
     return parser
 
 
