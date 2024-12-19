@@ -4,11 +4,12 @@ numpy>=1.24.0,<2.3.0  # Numerical computations
 pillow>=10.0.0,<11.0.0  # Image processing
 torch>=2.1.0,<2.6.0  # Required for VAE decoding and video saving
 torchvision>=0.16.0,<0.21.0  # Video utilities
+einops>=0.7.0  # Tensor operations
 
 # Model loading and processing
-transformers>=4.36.0,<4.48.0  # Text encoders
-diffusers>=0.25.0,<0.26.0  # Diffusion models
-huggingface_hub>=0.20.0,<0.28.0  # Model downloads
+transformers>=4.37.0  # Text encoders (latest version)
+diffusers>=0.26.0  # Diffusion models (latest version)
+huggingface_hub>=0.20.0  # Model downloads (latest version)
 safetensors>=0.4.0,<0.5.0  # CLIP model loading
 python-dotenv>=1.0.0,<1.1.0  # Environment variables
 
