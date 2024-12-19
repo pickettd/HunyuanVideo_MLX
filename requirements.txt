@@ -5,7 +5,7 @@ pillow>=10.0.0,<11.0.0  # Image processing
 torch>=2.1.0,<2.6.0  # Required for VAE decoding and video saving
 torchvision>=0.16.0,<0.21.0  # Video utilities
 einops>=0.7.0  # Tensor operations
-accelerate>=0.26.0  # Memory optimization for transformers
+accelerate==0.26.1  # Memory optimization for transformers
 
 # Model loading and processing
 transformers>=4.37.0  # Text encoders (latest version)
