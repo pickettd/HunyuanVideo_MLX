@@ -1,7 +1,7 @@
 # HunyuanVideo MLX
 
 [![License](https://img.shields.io/badge/license-Tencent%20Hunyuan-blue.svg)](LICENSE.txt)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3116/)
 [![MLX](https://img.shields.io/badge/MLX-0.0.10+-blue.svg)](https://github.com/ml-explore/mlx)
 [![macOS](https://img.shields.io/badge/macOS-12.3+-blue.svg)](https://support.apple.com/macos)
 
@@ -33,27 +33,50 @@ ckpts/
 
 - macOS 12.3 or later
 - Apple Silicon Mac (M1/M2/M3)
-- Python 3.10 or later
+- Python 3.11 (required for package compatibility)
 - 16GB RAM minimum (32GB+ recommended)
+
+To install Python 3.11:
+```bash
+# Using Homebrew
+brew install python@3.11
+
+# Or download from python.org
+open https://www.python.org/downloads/release/python-3116/
+```
 
 ## Setup
 
-1. Install MLX and dependencies:
-```bash
-# Install MLX
-pip install mlx
+1. **Ensure System Requirements**:
+   - macOS 12.3 or later
+   - Apple Silicon Mac (M1/M2/M3)
+   - Python 3.11 (required)
+   - 16GB RAM minimum (32GB+ recommended)
 
-# Install other requirements
-pip install -r requirements.txt
+2. **Install Dependencies**:
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/HunyuanVideo_MLX.git
+cd HunyuanVideo_MLX
+
+# Run the installation script (creates venv and installs dependencies)
+./install_mlx.sh
 ```
 
-2. Download model weights:
+3. **Configure Environment**:
 ```bash
-# First set up your Hugging Face token
-cp .env.example .env
-# Edit .env and add: HF_TOKEN=your_token_here
+# The install script creates .env from template
+# Edit .env and add your Hugging Face token:
+# Get token from: https://huggingface.co/settings/tokens
+nano .env  # or use any text editor
+```
 
-# Download weights
+4. **Download Model Weights**:
+```bash
+# Activate the virtual environment (if not already activated)
+source venv/bin/activate
+
+# Download weights (requires HF_TOKEN in .env)
 python download_weights.py
 ```
 

@@ -16,10 +16,16 @@ if [[ "$(uname -m)" != "arm64" ]]; then
     error_exit "This script requires Apple Silicon (M1/M2/M3). Current architecture: $(uname -m)"
 fi
 
-# Check Python version (3.10 or higher required)
-python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-if (( $(echo "$python_version < 3.10" | bc -l) )); then
-    error_exit "Python 3.10 or higher is required. Current version: $python_version"
+# Ensure we're using Python 3.11
+if ! command -v python3.11 &> /dev/null; then
+    error_exit "Python 3.11 is required but not found. Please install Python 3.11."
+fi
+
+# Force use of Python 3.11
+PYTHON_CMD="python3.11"
+python_version=$($PYTHON_CMD -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+if [ "$python_version" != "3.11" ]; then
+    error_exit "Python 3.11 is required. Current version: $python_version"
 fi
 
 echo "System checks passed:"
@@ -27,11 +33,15 @@ echo "- macOS detected: $(sw_vers -productVersion)"
 echo "- Apple Silicon detected: $(uname -m)"
 echo "- Python version: $python_version"
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv venv || error_exit "Failed to create virtual environment"
+# Remove existing venv if it exists
+if [ -d "venv" ]; then
+    echo "Removing existing virtual environment..."
+    rm -rf venv
 fi
+
+# Create new virtual environment with Python 3.11
+echo "Creating virtual environment..."
+$PYTHON_CMD -m venv venv || error_exit "Failed to create virtual environment"
 
 # Activate virtual environment
 echo "Activating virtual environment..."
@@ -41,13 +51,27 @@ source venv/bin/activate || error_exit "Failed to activate virtual environment"
 echo "Upgrading pip..."
 pip install --upgrade pip || error_exit "Failed to upgrade pip"
 
-# Install MLX
-echo "Installing MLX..."
+# Install MLX and other requirements
+echo "Installing MLX and other requirements..."
+pip install --upgrade pip || error_exit "Failed to upgrade pip"
 pip install "mlx>=0.0.10" || error_exit "Failed to install MLX"
-
-# Install other requirements
-echo "Installing project requirements..."
 pip install -r requirements.txt || error_exit "Failed to install requirements"
+
+# Set up environment variables
+echo "Setting up environment variables..."
+if [ ! -f ".env" ]; then
+    cp .env.example .env || error_exit "Failed to create .env file"
+    echo "Created .env file from template. Please edit it to add your Hugging Face token."
+fi
+
+# Export environment variables for Metal optimization
+export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
+export PYTORCH_MPS_LOW_WATERMARK_RATIO=0.0
+export PYTORCH_MPS_ALLOCATOR_POLICY=garbage_collection
+export MPS_USE_GUARD_MODE=1
+export MPS_ENABLE_MEMORY_GUARD=1
+export PYTORCH_MPS_SYNC_OPERATIONS=1
+export PYTORCH_MPS_AGGRESSIVE_MEMORY_CLEANUP=1
 
 # Optional: Install development dependencies
 if [[ "$1" == "--with-dev" ]]; then

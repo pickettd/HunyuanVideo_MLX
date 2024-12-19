@@ -1,24 +1,26 @@
 # Core dependencies
-mlx>=0.0.10
-numpy>=1.24.0
-pillow>=10.0.0
-torch>=2.1.0  # Still needed for VAE decoding and video saving
-torchvision>=0.16.0  # For video saving utilities
+mlx>=0.0.10,<0.22.0  # MLX framework
+numpy>=1.24.0,<2.3.0  # Numerical computations
+pillow>=10.0.0,<11.0.0  # Image processing
+torch>=2.1.0,<2.6.0  # Required for VAE decoding and video saving
+torchvision>=0.16.0,<0.21.0  # Video utilities
 
 # Model loading and processing
-transformers>=4.36.0  # For text encoders
-huggingface_hub>=0.20.0  # For model downloads
-safetensors>=0.4.0  # For CLIP model loading
-python-dotenv>=1.0.0  # For .env handling
+transformers>=4.36.0,<4.48.0  # Text encoders
+huggingface_hub>=0.20.0,<0.28.0  # Model downloads
+safetensors>=0.4.0,<0.5.0  # CLIP model loading
+python-dotenv>=1.0.0,<1.1.0  # Environment variables
 
 # UI and visualization
-gradio>=4.0.0
+gradio>=4.0.0,<5.10.0  # Web interface
 
 # Utilities
-loguru>=0.7.0
-psutil>=5.9.0
-tqdm>=4.66.0
+loguru>=0.7.0,<0.8.0  # Logging
+psutil>=5.9.0,<6.2.0  # System monitoring
+tqdm>=4.66.0,<4.68.0  # Progress bars
 
 # Optional dependencies
-moviepy>=1.0.3  # For video processing
-imageio>=2.31.0  # For image/video I/O
+moviepy>=1.0.3,<2.2.0  # Video processing
+imageio>=2.31.0,<2.37.0  # Image/video I/O
+
+# Note: Version ranges are set to ensure compatibility with Python 3.10-3.11
