@@ -703,12 +703,34 @@ class HunyuanVideoPipeline:
                     B, C, T, H, W = latents.shape
                     
                     # Project noise prediction to match VAE latent channels
-                    noise_pred = noise_pred.reshape(B, T * H * W, -1)  # Flatten spatial dims
+                    logger.info(f"Initial noise_pred shape: {noise_pred.shape}")
+                    noise_pred = noise_pred.reshape(-1, self.hidden_size)  # Flatten to 2D
+                    logger.info(f"After flatten shape: {noise_pred.shape}")
                     noise_pred = self.proj(noise_pred)  # Project to correct channel dim
-                    noise_pred = noise_pred.reshape(B, T, H, W, C)  # Restore spatial dims
-                    noise_pred = noise_pred.transpose(0, 4, 1, 2, 3)  # B, C, T, H, W format
+                    logger.info(f"After projection shape: {noise_pred.shape}")
                     
-                    logger.info(f"Noise prediction shape after projection: {noise_pred.shape}")
+                    # Calculate spatial dimensions
+                    total_spatial = T * H * W
+                    spatial_per_batch = noise_pred.shape[0] // B
+                    
+                    # Ensure dimensions match
+                    if spatial_per_batch != total_spatial:
+                        logger.warning(f"Spatial dimensions mismatch: got {spatial_per_batch}, expected {total_spatial}")
+                        # Interpolate noise_pred to match expected dimensions
+                        noise_pred = noise_pred.reshape(B, -1, C)  # First reshape to batch
+                        # Resize to match spatial dimensions
+                        noise_pred = mx.repeat(noise_pred, total_spatial // noise_pred.shape[1], axis=1)
+                        # Truncate any extra elements
+                        noise_pred = noise_pred[:, :total_spatial, :]
+                    else:
+                        noise_pred = noise_pred.reshape(B, total_spatial, C)
+                    
+                    logger.info(f"After spatial adjustment: {noise_pred.shape}")
+                    noise_pred = noise_pred.transpose(0, 2, 1)  # B, C, THW
+                    logger.info(f"After transpose: {noise_pred.shape}")
+                    noise_pred = noise_pred.reshape(B, C, T, H, W)  # Final reshape to match latents
+                    logger.info(f"Final shape: {noise_pred.shape}")
+                    logger.info(f"Target latents shape: {latents.shape}")
                     
                     # Update latents with broadcasting
                     alpha = 1.0 / ((t + 1) ** 0.5)
