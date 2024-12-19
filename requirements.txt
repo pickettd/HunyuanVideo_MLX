@@ -7,6 +7,7 @@ torchvision>=0.16.0,<0.21.0  # Video utilities
 
 # Model loading and processing
 transformers>=4.36.0,<4.48.0  # Text encoders
+diffusers>=0.25.0,<0.26.0  # Diffusion models
 huggingface_hub>=0.20.0,<0.28.0  # Model downloads
 safetensors>=0.4.0,<0.5.0  # CLIP model loading
 python-dotenv>=1.0.0,<1.1.0  # Environment variables
