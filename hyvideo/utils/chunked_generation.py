@@ -1,5 +1,6 @@
 import torch
 import gc
+import os
 import psutil
 from typing import Dict, Any, Optional
 from loguru import logger
@@ -23,8 +24,8 @@ def generate_video_chunks(
     height: int,
     width: int,
     video_length: int,
-    chunk_size: int = 8,  # Reduced default chunk size
-    overlap: int = 2,     # Reduced overlap but still maintains transitions
+    chunk_size: int = 8,  # Use 8-frame chunks (>= 4 and multiple of 4)
+    overlap: int = 2,     # Use 2 frame overlap for 8-frame chunks
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -43,6 +44,10 @@ def generate_video_chunks(
     Returns:
         Dict containing generated video samples and metadata
     """
+    # Force chunk size to be 8 (>= 4 and multiple of 4)
+    chunk_size = 8
+    overlap = min(2, overlap)  # Limit overlap to 2 for 8-frame chunks
+    
     logger.info(f"Generating video in chunks: {video_length} frames total, {chunk_size} frames per chunk")
     
     # Calculate number of chunks needed
@@ -55,9 +60,9 @@ def generate_video_chunks(
     chunk_samples = []
     all_seeds = []
     
-    # Set initial conservative memory limits
-    original_high = torch.mps.get_mem_high_watermark_ratio()
-    original_low = torch.mps.get_mem_low_watermark_ratio()
+    # Store original environment variables
+    original_high = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO', '0.0')
+    original_low = os.environ.get('PYTORCH_MPS_LOW_WATERMARK_RATIO', '0.0')
     
     try:
         for i in range(num_chunks):
@@ -67,6 +72,10 @@ def generate_video_chunks(
             start_frame = i * effective_chunk_size
             end_frame = min(start_frame + chunk_size, video_length)
             current_chunk_size = end_frame - start_frame
+            
+            # Ensure chunk size is exactly 8 frames
+            if current_chunk_size != 8:
+                current_chunk_size = 8
             
             # Modify prompt for temporal context
             if i > 0:
@@ -79,8 +88,8 @@ def generate_video_chunks(
                 
             try:
                 # Set conservative memory limits for chunk processing
-                torch.mps.set_mem_high_watermark_ratio(0.3)  # Very conservative
-                torch.mps.set_mem_low_watermark_ratio(0.2)
+                os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'  # Disable limits for generation
+                os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = '0.0'
                 
                 # Generate chunk
                 chunk_output = model.predict(
@@ -104,31 +113,15 @@ def generate_video_chunks(
                     # Aggressive memory cleanup
                     clear_memory()
                     
-                    # Try with smaller chunk size
-                    if chunk_size > 4:
-                        new_chunk_size = max(4, chunk_size // 2)
-                        new_overlap = max(1, overlap // 2)
-                        logger.info(f"Retrying with reduced chunk size: {new_chunk_size} frames, {new_overlap} frame overlap")
-                        
-                        return generate_video_chunks(
-                            model=model,
-                            prompt=prompt,
-                            height=height,
-                            width=width,
-                            video_length=video_length,
-                            chunk_size=new_chunk_size,
-                            overlap=new_overlap,
-                            **kwargs
-                        )
-                    else:
-                        raise RuntimeError("Cannot reduce chunk size further. Please try with smaller resolution or video length.")
+                    # Cannot reduce chunk size further since we need 8 frames
+                    raise RuntimeError("Cannot reduce chunk size further. Please try with smaller resolution.")
                 else:
                     raise
     
     finally:
-        # Restore original memory settings
-        torch.mps.set_mem_high_watermark_ratio(original_high)
-        torch.mps.set_mem_low_watermark_ratio(original_low)
+        # Restore original environment variables
+        os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = original_high
+        os.environ['PYTORCH_MPS_LOW_WATERMARK_RATIO'] = original_low
     
     # Blend overlapping frames between chunks
     final_samples = []

@@ -1,96 +1,79 @@
 #!/bin/bash
-# Description: Enhanced memory-optimized video generation using HunyuanVideo model
 
-# Disable MPS memory limits for maximum memory utilization
-export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
-export PYTORCH_MPS_LOW_WATERMARK_RATIO=0.0
+# Default values
+PROMPT="A beautiful sunset over the ocean, with waves gently rolling onto the beach"
+VIDEO_SIZE="540 960"
+VIDEO_LENGTH=16
+SEED=42
+GUIDANCE_SCALE=7.0
+NUM_INFERENCE_STEPS=25
+PRECISION="fp16"
+VAE_PRECISION="fp16"
+VAE_TILING="--vae-tiling"
+SAVE_PATH="results"
 
-# Other optimizations
-export PYTORCH_MPS_ALLOCATOR_POLICY=garbage_collection
-export MPS_USE_GUARD_MODE=1
-export MPS_ENABLE_MEMORY_GUARD=1
-export PYTORCH_MPS_SYNC_OPERATIONS=1
-export PYTORCH_MPS_AGGRESSIVE_MEMORY_CLEANUP=1
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --prompt)
+            PROMPT="$2"
+            shift 2
+            ;;
+        --video-size)
+            VIDEO_SIZE="$2 $3"
+            shift 3
+            ;;
+        --video-length)
+            VIDEO_LENGTH="$2"
+            shift 2
+            ;;
+        --seed)
+            SEED="$2"
+            shift 2
+            ;;
+        --guidance-scale)
+            GUIDANCE_SCALE="$2"
+            shift 2
+            ;;
+        --num-inference-steps)
+            NUM_INFERENCE_STEPS="$2"
+            shift 2
+            ;;
+        --precision)
+            PRECISION="$2"
+            shift 2
+            ;;
+        --vae-precision)
+            VAE_PRECISION="$2"
+            shift 2
+            ;;
+        --no-vae-tiling)
+            VAE_TILING=""
+            shift
+            ;;
+        --save-path)
+            SAVE_PATH="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            exit 1
+            ;;
+    esac
+done
 
-# Function to clear system caches
-clear_system_caches() {
-    echo "Clearing system caches..."
-    sudo purge
-    sleep 2
-}
+# Set PYTHONPATH to include project root
+export PYTHONPATH=".:$PYTHONPATH"
 
-# Function to check available memory
-check_memory() {
-    free_memory=$(vm_stat | awk '/free/ {print $3}' | sed 's/\.//')
-    echo "Available memory pages: $free_memory"
-}
-
-echo "Stage 1: Initial system cleanup"
-clear_system_caches
-check_memory
-
-echo "Stage 2: Starting with minimal settings"
-# Start with very conservative settings
-python3 sample_video_mps.py \
-    --mmgp-mode \
-    --mmgp-config configs/mmgp_mlx.json \
-    --video-size 256 256 \
-    --video-length 5 \
-    --infer-steps 15 \
-    --prompt "A cat walks on the grass, realistic style." \
-    --seed 42 \
-    --embedded-cfg-scale 6.0 \
-    --flow-shift 7.0 \
-    --vae-tiling \
-    --precision fp16 \
-    --vae-precision fp16 \
-    --text-encoder-precision fp16 \
-    --text-encoder-precision-2 fp16 \
-    --save-path ./results
-
-# Clear memory between stages
-clear_system_caches
-check_memory
-
-echo "Stage 3: Attempting medium settings"
-python3 sample_video_mps.py \
-    --mmgp-mode \
-    --mmgp-config configs/mmgp_mlx.json \
-    --video-size 544 960 \
-    --video-length 13 \
-    --infer-steps 20 \
-    --prompt "A cat walks on the grass, realistic style." \
-    --seed 42 \
-    --embedded-cfg-scale 6.0 \
-    --flow-shift 7.0 \
-    --vae-tiling \
-    --precision fp16 \
-    --vae-precision fp16 \
-    --text-encoder-precision fp16 \
-    --text-encoder-precision-2 fp16 \
-    --save-path ./results
-
-# Clear memory between stages
-clear_system_caches
-check_memory
-
-echo "Stage 4: Attempting full settings (64GB+ RAM only)"
-# Only attempt if previous stages succeeded
-python3 sample_video_mps.py \
-    --mmgp-mode \
-    --mmgp-config configs/mmgp_mlx.json \
-    --video-size 720 1280 \
-    --video-length 25 \
-    --infer-steps 25 \
-    --prompt "A cat walks on the grass, realistic style." \
-    --seed 42 \
-    --embedded-cfg-scale 6.0 \
-    --flow-shift 7.0 \
-    --vae-tiling \
-    --precision fp16 \
-    --vae-precision fp16 \
-    --text-encoder-precision fp16 \
-    --text-encoder-precision-2 fp16 \
-    --save-path ./results
-
-echo "Complete! Check ./results for generated videos"
+# Run video generation
+python sample_video.py \
+    --prompt "$PROMPT" \
+    --video-size $VIDEO_SIZE \
+    --video-length $VIDEO_LENGTH \
+    --seed $SEED \
+    --guidance-scale $GUIDANCE_SCALE \
+    --num-inference-steps $NUM_INFERENCE_STEPS \
+    --precision $PRECISION \
+    --vae-precision $VAE_PRECISION \
+    $VAE_TILING \
+    --save-path "$SAVE_PATH"

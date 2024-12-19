@@ -1,0 +1,32 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Python files
+*.py text diff=python
+*.pyi text diff=python
+
+# Documentation
+*.md text diff=markdown
+*.txt text
+*.rst text
+
+# Configs
+*.json text
+*.yaml text
+*.yml text
+*.toml text
+.env* text
+.git* text
+
+# Scripts
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Binary files
+*.pkl binary
+*.pt binary
+*.pth binary
+*.bin binary
+*.h5 binary
+*.onnx binary
+*.safetensors binary

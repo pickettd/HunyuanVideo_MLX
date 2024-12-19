@@ -13,15 +13,19 @@ def setup_logging():
 
 def create_directories():
     """Create necessary directories"""
+    # Main model directories
     dirs = [
-        "ckpts/hunyuan-video-t2v-720p/transformers",
-        "ckpts/vae",
-        "ckpts/text_encoder",
-        "ckpts/text_encoder_2",
-        "ckpts/llava-llama-3-8b-v1_1-transformers"
+        "ckpts/hunyuan-video-t2v-720p/transformers",  # Main model weights
+        "ckpts/hunyuan-video-t2v-720p/vae",          # VAE model
+        "ckpts/text_encoder",                         # Primary text encoder
+        "ckpts/text_encoder_2",                       # Secondary text encoder (CLIP)
+        "ckpts/llava-llama-3-8b-v1_1-transformers"   # LLaVA model for processing
     ]
+    
+    # Create all directories
     for dir_path in dirs:
         Path(dir_path).mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created directory: {dir_path}")
 
 def download_llava_model(token):
     """Download llava model files"""
@@ -70,13 +74,13 @@ def download_models():
     token = os.getenv('HF_TOKEN')
     
     try:
-        # Download main model
-        logger.info("Downloading main model...")
+        # Download main transformer model
+        logger.info("Downloading main transformer model...")
         main_model = hf_hub_download(
             repo_id="tencent/HunyuanVideo",
             filename="hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt",
             token=token,
-            local_dir="ckpts"
+            local_dir="ckpts"  # Will create hunyuan-video-t2v-720p/transformers subdirectory
         )
         logger.success(f"Downloaded main model to {main_model}")
         
@@ -86,15 +90,15 @@ def download_models():
             repo_id="tencent/HunyuanVideo",
             filename="hunyuan-video-t2v-720p/vae/pytorch_model.pt",
             token=token,
-            local_dir="ckpts"
+            local_dir="ckpts"  # Will create hunyuan-video-t2v-720p/vae subdirectory
         )
         logger.success(f"Downloaded VAE model to {vae_model}")
         
-        # Download llava model
+        # Download llava model for text encoding
         if not download_llava_model(token):
             logger.warning("Failed to download or process llava model")
         
-        # Download CLIP model files
+        # Download CLIP model files for secondary text encoder
         logger.info("\nDownloading CLIP model...")
         clip_files = [
             "config.json",

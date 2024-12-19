@@ -1,0 +1,59 @@
+{
+    "model_settings": {
+        "precision": "fp16",
+        "model": "HYVideo-T/2",
+        "text_states_dim": 4096,
+        "text_states_dim_2": 768,
+        "vae": "884-16c-hy",
+        "text_encoder": "llm",
+        "tokenizer": "llm",
+        "text_len": 256,
+        "denoise_type": "flow",
+        "flow_shift": 5.0,
+        "flow_solver": "euler",
+        "latent_channels": 16,
+        "hidden_size": 3072,
+        "heads_num": 24,
+        "mlp_width_ratio": 4.0,
+        "rope_theta": 10000.0
+    },
+    "generation_defaults": {
+        "video_size": [544, 960],
+        "video_length": 13,
+        "guidance_scale": 7.0,
+        "num_inference_steps": 40
+    },
+    "mlx_optimization": {
+        "memory_settings": {
+            "high_watermark_ratio": 0.0,
+            "low_watermark_ratio": 0.0,
+            "allocator_policy": "garbage_collection",
+            "use_guard_mode": true,
+            "enable_memory_guard": true,
+            "sync_operations": true,
+            "aggressive_cleanup": true
+        },
+        "precision_settings": {
+            "model": "fp16",
+            "vae": "fp16",
+            "text_encoder": "fp16"
+        },
+        "hardware_recommendations": {
+            "M1": {
+                "max_resolution": [544, 960],
+                "max_video_length": 13,
+                "notes": "Conservative settings for stability"
+            },
+            "M2": {
+                "max_resolution": [720, 720],
+                "max_video_length": 17,
+                "notes": "Balanced performance and stability"
+            },
+            "M3": {
+                "max_resolution": [720, 1280],
+                "max_video_length": 21,
+                "notes": "Optimized for high performance"
+            }
+        }
+    }
+}

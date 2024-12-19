@@ -1,117 +1,41 @@
-import torch
+import mlx.core as mx
 import platform
 import psutil
 import os
-from pathlib import Path
-import mlx.core as mx
-
-def check_mlx():
-    """Check MLX configuration"""
-    print("\n=== MLX Configuration ===")
-    print(f"MLX version: {mx.__version__}")
-    print(f"Metal backend: Available")  # MLX requires Metal, so if imported successfully, it's available
-
-def check_mps():
-    """Check MPS availability and configuration"""
-    print("\n=== MPS Configuration ===")
-    print(f"PyTorch version: {torch.__version__}")
-    print(f"MPS available: {torch.backends.mps.is_available()}")
-    print(f"MPS built: {torch.backends.mps.is_built()}")
-    
-    if not torch.backends.mps.is_available():
-        if not torch.backends.mps.is_built():
-            print("\n⚠️  MPS not available because PyTorch was not built with MPS enabled")
-        else:
-            print("\n⚠️  MPS not available because the current MacOS version is not 12.3+ and/or you do not have an MPS-enabled device")
 
 def check_system():
-    """Check system specifications"""
-    print("\n=== System Information ===")
-    print(f"OS: {platform.system()} {platform.mac_ver()[0]}")
-    print(f"Processor: {platform.processor()}")
+    """Check system requirements for running HunyuanVideo."""
+    print("\nChecking system requirements...")
     
-    # Check if running on Apple Silicon
-    is_arm = platform.processor() == 'arm'
-    print(f"Apple Silicon: {'Yes' if is_arm else 'No'}")
+    # Check Python version
+    python_version = platform.python_version()
+    print(f"Python version: {python_version}")
     
-    if not is_arm:
-        print("\n⚠️  Warning: This version is optimized for Apple Silicon (M1/M2/M3)")
+    # Check MLX version
+    mlx_version = mx.__version__
+    print(f"MLX version: {mlx_version}")
     
-    # Memory information
+    # Check MLX device
+    device = mx.default_device()
+    print(f"MLX device: {device}")
+    
+    # Check Metal availability (Apple Silicon)
+    metal_available = mx.metal.is_available()
+    print(f"Metal available: {metal_available}")
+    
+    # Check system memory
     memory = psutil.virtual_memory()
-    memory_gb = memory.total / (1024 ** 3)
-    print(f"Total RAM: {memory_gb:.1f} GB")
-    print(f"Available RAM: {memory.available / (1024 ** 3):.1f} GB")
+    print(f"\nSystem memory:")
+    print(f"  Total: {memory.total / 1024**3:.1f} GB")
+    print(f"  Available: {memory.available / 1024**3:.1f} GB")
+    print(f"  Used: {memory.used / 1024**3:.1f} GB ({memory.percent}%)")
     
-    if memory_gb < 32:
-        print("\n⚠️  Warning: Less than 32GB RAM detected. This may impact performance.")
-        print("    Recommended: 32GB minimum, 64GB for higher resolutions")
-
-def check_model_weights():
-    """Check if model weights are downloaded"""
-    print("\n=== Model Weights ===")
-    ckpts_dir = Path("ckpts")
-    
-    # Check for main model and VAE
-    required_files = [
-        "hunyuan-video-t2v-720p/transformers/mp_rank_00_model_states.pt",
-        "hunyuan-video-t2v-720p/vae/pytorch_model.pt"
-    ]
-    
-    # Check for text encoder files (split into multiple parts)
-    text_encoder_files = [f"text_encoder/model-{i:05d}-of-00007.safetensors" for i in range(1, 8)]
-    required_files.extend(text_encoder_files)
-    
-    missing_files = []
-    for file in required_files:
-        if not (ckpts_dir / file).exists():
-            # For text encoder files, only report if all parts are missing
-            if not file.startswith("text_encoder/model-") or all(
-                not (ckpts_dir / f).exists() for f in text_encoder_files
-            ):
-                missing_files.append(file)
-    
-    if missing_files:
-        print("\n⚠️  Missing model weights:")
-        for file in missing_files:
-            if not file.startswith("text_encoder/model-"):
-                print(f"    - {file}")
-            elif all(f.startswith("text_encoder/model-") for f in missing_files):
-                print("    - text_encoder model files")
-                break
-        print("\nRun 'python download_weights.py' to download the required model weights")
-    else:
-        print("✓ All required model weights are present")
-
-def check_environment():
-    """Check environment variables and configurations"""
-    print("\n=== Environment Variables ===")
-    mps_ratio = os.environ.get('PYTORCH_MPS_HIGH_WATERMARK_RATIO', '0.5')
-    print(f"PYTORCH_MPS_HIGH_WATERMARK_RATIO: {mps_ratio}")
-    
-    if float(mps_ratio) < 0.7:
-        print("\nTip: For better performance, set:")
-        print("export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.7")
-
-def main():
-    print("=== HunyuanVideo MLX System Check ===")
-    
-    # Check macOS version
-    macos_version = platform.mac_ver()[0]
-    if float(macos_version.split('.')[0]) < 12:
-        print("\n⚠️  Error: macOS 12.3 or later is required")
-        return
-    
-    check_mlx()
-    check_mps()
-    check_system()
-    check_model_weights()
-    check_environment()
-    
-    print("\nFor optimal performance:")
-    print("1. Close other memory-intensive applications")
-    print("2. Monitor system resources with: python monitor_resources.py")
-    print("3. Start with lower resolutions and gradually increase based on performance")
+    # Check disk space
+    disk = psutil.disk_usage(os.getcwd())
+    print(f"\nDisk space:")
+    print(f"  Total: {disk.total / 1024**3:.1f} GB")
+    print(f"  Free: {disk.free / 1024**3:.1f} GB")
+    print(f"  Used: {disk.used / 1024**3:.1f} GB ({disk.percent}%)")
 
 if __name__ == "__main__":
-    main()
+    check_system()

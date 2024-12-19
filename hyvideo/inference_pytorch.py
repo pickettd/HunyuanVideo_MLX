@@ -2,11 +2,15 @@ import os
 import gc
 import time
 import random
+import functools
 from typing import List, Optional, Tuple, Union
+from collections import OrderedDict
+
 from pathlib import Path
 from loguru import logger
 
 import torch
+import torch.distributed as dist
 import mlx.core as mx
 import mlx.nn as nn
 
@@ -17,19 +21,10 @@ from hyvideo.text_encoder import TextEncoder
 from hyvideo.utils.data_utils import align_to
 from hyvideo.modules.posemb_layers import get_nd_rotary_pos_embed
 from hyvideo.diffusion.schedulers import FlowMatchDiscreteScheduler
-from hyvideo.diffusion.pipelines.pipeline_hunyuan_video import (
-    HunyuanVideoPipeline,
-    to_mlx,
-    from_mlx,
-)
+from hyvideo.diffusion.pipelines import HunyuanVideoPipeline
 
 # Enable MLX optimizations
 mx.set_default_device(mx.gpu)
-
-def clear_mlx_cache():
-    """Clear MLX memory cache"""
-    import gc
-    gc.collect()
 
 def aggressive_memory_cleanup():
     """Aggressively clear memory"""
@@ -41,9 +36,8 @@ def aggressive_memory_cleanup():
             torch.mps.empty_cache()
     for _ in range(3):
         gc.collect()
-    clear_mlx_cache()
 
-class Inference:
+class Inference(object):
     def __init__(
         self,
         args,
@@ -65,7 +59,7 @@ class Inference:
         self.pipeline = pipeline
         self.use_cpu_offload = use_cpu_offload
         self.args = args
-        # Prioritize MPS over CPU for PyTorch operations
+        # Prioritize MPS over CPU
         self.device = device if device is not None else (
             torch.device("mps") if torch.backends.mps.is_available() 
             else torch.device("cpu")
@@ -74,10 +68,10 @@ class Inference:
 
     @classmethod
     def from_pretrained(cls, pretrained_model_path, args, device=None, **kwargs):
-        """Initialize the MLX Inference pipeline."""
+        """Initialize the Inference pipeline."""
         logger.info(f"Got text-to-video model root path: {pretrained_model_path}")
         
-        # Prioritize MPS over CPU for PyTorch operations
+        # Prioritize MPS over CPU
         if device is None:
             device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
 
@@ -177,7 +171,7 @@ class Inference:
     def load_state_dict(args, model, pretrained_model_path):
         """Load model weights with safe handling"""
         try:
-            # Construct model path
+            # Construct correct model path
             model_dir = Path(pretrained_model_path) / "hunyuan-video-t2v-720p" / "transformers"
             model_files = list(model_dir.glob("*_model_states.pt"))
             
@@ -201,30 +195,22 @@ class Inference:
             if "module" in state_dict:
                 state_dict = state_dict["module"]
             
-            # Create new state dict with correct keys
-            new_state_dict = {}
+            # Remove DataParallel prefix if present in keys
+            new_state_dict = OrderedDict()
             for k, v in state_dict.items():
-                # Remove 'module.' prefix if present
                 if k.startswith('module.'):
-                    k = k[7:]
-                # Map old keys to new keys
-                if k in model.state_dict():
-                    new_state_dict[k] = v
-            
-            # Load weights with less strict matching
-            missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
-            
-            if missing_keys:
-                logger.warning(f"Missing keys: {missing_keys}")
-            if unexpected_keys:
-                logger.warning(f"Unexpected keys: {unexpected_keys}")
+                    k = k[7:]  # Remove 'module.' prefix
+                new_state_dict[k] = v
+
+            # Move to target device after loading
+            model.load_state_dict(new_state_dict, strict=True)
             return model
             
         except Exception as e:
             logger.error(f"Error loading model weights: {str(e)}")
             raise
 
-class HunyuanVideo(Inference):
+class HunyuanVideoSampler(Inference):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pipeline = self.load_diffusion_pipeline(
@@ -254,8 +240,14 @@ class HunyuanVideo(Inference):
             text_encoder_2=text_encoder_2,
             transformer=model,
             scheduler=scheduler,
+            progress_bar_config=progress_bar_config,
             args=args,
         )
+        
+        if self.use_cpu_offload:
+            pipeline.enable_sequential_cpu_offload()
+        else:
+            pipeline = pipeline.to(device)
 
         return pipeline
 
@@ -287,7 +279,6 @@ class HunyuanVideo(Inference):
             
         assert sum(rope_dim_list) == head_dim
 
-        # Get rotary embeddings and convert to MLX arrays
         freqs_cos, freqs_sin = get_nd_rotary_pos_embed(
             rope_dim_list,
             rope_sizes,
@@ -295,18 +286,18 @@ class HunyuanVideo(Inference):
             use_real=True,
             theta_rescale_factor=1,
         )
-        # Convert to MLX arrays
-        freqs_cos = to_mlx(freqs_cos)
-        freqs_sin = to_mlx(freqs_sin)
         return freqs_cos, freqs_sin
 
+    @torch.no_grad()
     def predict(self, prompt, height=192, width=336, video_length=129, seed=None,
                negative_prompt=None, infer_steps=50, guidance_scale=6, flow_shift=5.0,
                embedded_guidance_scale=None, batch_size=1, num_videos_per_prompt=1, **kwargs):
-        """Generate video from text prompt using MLX acceleration"""
+        """Generate video from text prompt"""
         out_dict = {}
 
         # Handle seeds
+        if isinstance(seed, torch.Tensor):
+            seed = seed.tolist()
         if seed is None:
             seeds = [random.randint(0, 1_000_000) for _ in range(batch_size * num_videos_per_prompt)]
         elif isinstance(seed, int):
@@ -321,7 +312,7 @@ class HunyuanVideo(Inference):
         else:
             raise ValueError(f"Invalid seed type: {type(seed)}")
             
-        mx.random.seed(seeds[0])  # Set MLX random seed
+        generator = [torch.Generator(self.device).manual_seed(s) for s in seeds]
         out_dict["seeds"] = seeds
 
         # Validate dimensions
@@ -388,24 +379,24 @@ class HunyuanVideo(Inference):
                 guidance_scale=guidance_scale,
                 negative_prompt=negative_prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
+                generator=generator,
                 output_type="pil",
                 freqs_cis=(freqs_cos, freqs_sin),
                 n_tokens=n_tokens,
                 embedded_guidance_scale=embedded_guidance_scale,
                 data_type="video" if target_video_length > 1 else "image",
+                is_progress_bar=True,
                 vae_ver=self.args.vae,
                 enable_tiling=self.args.vae_tiling,
-            )
+            )[0]
             
+            out_dict["samples"] = samples
+            out_dict["prompts"] = prompt
+
             gen_time = time.time() - start_time
             logger.info(f"Generation successful, time: {gen_time:.2f}s")
             
-            # Return in pipeline output format
-            return HunyuanVideoPipeline.Output(
-                videos=samples.videos,
-                seeds=seeds,
-                prompts=prompt * num_videos_per_prompt
-            )
+            return out_dict
             
         except Exception as e:
             logger.error(f"Generation failed: {str(e)}")

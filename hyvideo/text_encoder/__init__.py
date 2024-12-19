@@ -250,6 +250,14 @@ class TextEncoder(nn.Module):
             return_tensors="pt",
         )
         if tokenize_input_type == "str":
+            # Ensure text is a list of strings
+            if isinstance(text, str):
+                text = [text]
+            elif isinstance(text, (list, tuple)):
+                text = [t if isinstance(t, str) else str(t) for t in text]
+            else:
+                text = [str(text)]
+                
             return self.tokenizer(
                 text,
                 return_length=False,

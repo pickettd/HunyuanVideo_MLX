@@ -35,6 +35,7 @@ ENV/
 
 # Project specific
 results/
+.clinerules
 *.mp4
 *.avi
 *.mov

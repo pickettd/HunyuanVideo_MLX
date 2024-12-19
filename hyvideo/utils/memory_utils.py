@@ -98,6 +98,19 @@ def check_memory_feasibility(height: int, width: int, video_length: int) -> tupl
     
     return True, "Memory requirements look feasible"
 
+def print_memory_usage() -> float:
+    """Print current memory usage and return available memory in GB"""
+    mem_status = get_memory_status()
+    available_memory = mem_status['system_available']
+    
+    logger.info(f"Memory Status:")
+    logger.info(f"  Process RSS: {mem_status['process_rss']:.2f}GB")
+    logger.info(f"  Process VMS: {mem_status['process_vms']:.2f}GB")
+    logger.info(f"  System Available: {available_memory:.2f}GB")
+    logger.info(f"  System Total: {mem_status['system_total']:.2f}GB")
+    
+    return available_memory
+
 def suggest_optimal_settings() -> Dict[str, Any]:
     """Suggest optimal settings based on available memory"""
     mem_status = get_memory_status()
