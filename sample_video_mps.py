@@ -9,6 +9,7 @@ from pathlib import Path
 
 from hyvideo.utils.memory_utils import print_memory_usage
 from hyvideo.inference import HunyuanVideo
+from hyvideo.utils.quantization import quantize_model_weights
 
 def load_mlx_config(config_path: str = "configs/mlx_config.json"):
     """Load MLX configuration with defaults"""
@@ -95,6 +96,15 @@ def main():
     parser.add_argument("--text-len-2", type=int, default=256)
     parser.add_argument("--flow-reverse", action="store_true", default=False)
     
+    # Quantization settings
+    parser.add_argument("--enable-quantization", action="store_true", default=False,
+                       help="Enable model quantization for faster inference")
+    parser.add_argument("--quantization-bits", type=int, default=4,
+                       help="Number of bits for quantization (default: 4)")
+    parser.add_argument("--exclude-from-quantization", type=str, nargs="+",
+                       default=["vae"],
+                       help="List of modules to exclude from quantization")
+    
     args = parser.parse_args()
     
     # Create save directory
@@ -139,7 +149,22 @@ def main():
         if hasattr(torch.mps, 'empty_cache'):
             torch.mps.empty_cache()
         
-        pipeline = HunyuanVideo.from_pretrained(checkpoint_path, args)
+        # Setup quantization config if enabled
+        quantization_config = None
+        if args.enable_quantization:
+            quantization_config = {
+                "enabled": True,
+                "bits": args.quantization_bits,
+                "exclude_modules": args.exclude_from_quantization
+            }
+            logger.info(f"Enabling {args.quantization_bits}-bit quantization")
+            logger.info(f"Excluded modules: {args.exclude_from_quantization}")
+        
+        pipeline = HunyuanVideo.from_pretrained(
+            checkpoint_path, 
+            args,
+            quantization_config=quantization_config
+        )
         
         # Clear memory after initialization
         gc.collect()

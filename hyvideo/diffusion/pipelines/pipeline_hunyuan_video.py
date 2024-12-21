@@ -7,9 +7,17 @@ import torch
 from loguru import logger
 
 from hyvideo.vae.mlx_vae import MLXVAE
+from hyvideo.utils.quantization import quantize_model_weights
 
 # For VAE decoding
 torch.set_grad_enabled(False)  # Ensure gradients are disabled
+
+# Default quantization settings
+DEFAULT_QUANT_CONFIG = {
+    "enabled": False,
+    "bits": 4,
+    "exclude_modules": ["vae"]  # Don't quantize VAE by default
+}
 
 # Enable MLX optimizations and memory management
 mx.set_default_device(mx.gpu)
@@ -403,9 +411,13 @@ class HunyuanVideoPipeline:
         scheduler,
         text_encoder_2=None,
         args=None,
+        quantization_config=None,
         **kwargs
     ):
-        logger.info("Initializing pipeline...")
+        logger.info("Initializing pipeline with quantization support...")
+        
+        # Setup quantization config
+        self.quant_config = {**DEFAULT_QUANT_CONFIG, **(quantization_config or {})}
         
         # Store components
         self.text_encoder = text_encoder
@@ -454,6 +466,29 @@ class HunyuanVideoPipeline:
             
             self.use_mlx = True
             self._setup_mlx_models()
+            
+            # Apply quantization if enabled
+            if self.quant_config["enabled"]:
+                logger.info(f"Applying {self.quant_config['bits']}-bit quantization...")
+                
+                # Quantize transformer blocks
+                if "transformer" not in self.quant_config.get("exclude_modules", []):
+                    for block in self.double_blocks:
+                        quantize_model_weights(block, bits=self.quant_config["bits"])
+                    for block in self.single_blocks:
+                        quantize_model_weights(block, bits=self.quant_config["bits"])
+                    logger.info("Transformer blocks quantized")
+                
+                # Quantize embedders if not excluded
+                if "embedders" not in self.quant_config.get("exclude_modules", []):
+                    quantize_model_weights(self.img_in, bits=self.quant_config["bits"])
+                    quantize_model_weights(self.txt_in, bits=self.quant_config["bits"])
+                    quantize_model_weights(self.time_in, bits=self.quant_config["bits"])
+                    quantize_model_weights(self.vector_in, bits=self.quant_config["bits"])
+                    logger.info("Embedders quantized")
+                
+                # Clear cache after quantization
+                clear_mlx_cache()
         except Exception as e:
             logger.error(f"Error initializing embedders: {str(e)}")
             raise
