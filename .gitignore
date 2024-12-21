@@ -50,7 +50,6 @@ weights/
 *.bin
 *.safetensors
 **/hunyuan-video-t2v*/
-**/vae/
 **/text_encoder/
 **/text_encoder_2/
 **/llava-llama*/
