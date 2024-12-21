@@ -187,13 +187,27 @@ def main():
         logger.info("Saving video...")
         video = outputs.videos[0]  # First video in batch
         save_path = os.path.join(args.save_path, f"{args.seed}.mp4")
-        
+
+        # Move to CPU and convert to numpy
+        video = video.cpu().numpy()
+        # Transpose from [C, T, H, W] to [T, H, W, C]
+        # if I don't include this, I get this: "Error occurred: Image must have 1, 2, 3 or 4 channels"
+        video = np.transpose(video, (1, 2, 3, 0))
+
         # Convert to uint8 range [0, 255]
         video = ((video + 1) * 127.5).astype(np.uint8)
-        
-        # Save frames as video
-        imageio.mimsave(save_path, [frame for frame in video], fps=8)
-        logger.info(f"Video saved to {save_path}")
+
+        # Save based on number of frames
+        if video.shape[0] == 1:
+            # Single frame - save as image
+            save_path = os.path.join(args.save_path, f"{args.seed}.png")
+            imageio.imwrite(save_path, video[0])
+            logger.info(f"Single frame image saved to {save_path}")
+        else:
+            # Multiple frames - save as video
+            save_path = os.path.join(args.save_path, f"{args.seed}.mp4")
+            imageio.mimsave(save_path, [frame for frame in video], fps=8)
+            logger.info(f"Video saved to {save_path}")
         
     except Exception as e:
         logger.error(f"Error occurred: {str(e)}")

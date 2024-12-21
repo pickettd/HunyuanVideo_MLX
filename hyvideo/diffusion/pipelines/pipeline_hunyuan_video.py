@@ -101,7 +101,7 @@ def from_mlx(array):
     if array is None:
         return None
     # Convert to float32 and return numpy array
-    return array.astype(mx.float32).numpy()
+    return np.array(array.astype(mx.float32))
 
 @dataclass
 class HunyuanVideoPipelineOutput:
@@ -492,7 +492,9 @@ class HunyuanVideoPipeline:
         except Exception as e:
             logger.error(f"Error initializing embedders: {str(e)}")
             raise
-        
+
+    # Alias for backward compatibility
+    Output = HunyuanVideoPipelineOutput
     def _setup_mlx_models(self):
         """Convert key components to MLX format for faster inference"""
         # Create double stream blocks
