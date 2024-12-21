@@ -6,6 +6,7 @@ import torch
 import torchvision
 import numpy as np
 import imageio
+from PIL import Image
 
 CODE_SUFFIXES = {
     ".py",  # Python codes
@@ -68,3 +69,20 @@ def save_videos_grid(videos: torch.Tensor, path: str, rescale=False, n_rows=1, f
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
     imageio.mimsave(path, outputs, fps=fps)
+
+def save_video_grid(frames, path: str, fps: int = 8):
+    """Save a sequence of PIL Image frames as a video.
+    
+    Args:
+        frames (List[PIL.Image]): List of PIL Image frames
+        path (str): Path to save the video
+        fps (int, optional): Frames per second. Defaults to 8.
+    """
+    # Convert PIL images to numpy arrays
+    frames = [np.array(frame) for frame in frames]
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    
+    # Save as video
+    imageio.mimsave(path, frames, fps=fps)
