@@ -122,12 +122,44 @@ The implementation includes several MLX-specific optimizations:
 2. **Metal Performance**
    - Native MPS backend utilization
    - fp16 precision throughout pipeline
+   - 4-bit weight quantization support
    - Optimized tensor operations
 
 3. **Pipeline Optimizations**
    - Efficient text encoding with MLX
    - Streamlined VAE processing
    - Memory-aware attention computation
+
+## Quantization Support
+
+The model supports 4-bit weight quantization for faster inference and reduced memory usage:
+
+```bash
+# Enable 4-bit quantization
+python sample_video_mps.py \
+    --prompt "your prompt here" \
+    --enable-quantization \
+    --quantization-bits 4 \
+    --exclude-from-quantization vae embedders
+
+# Default settings if not specified:
+# --quantization-bits: 4
+# --exclude-from-quantization: ["vae"]
+```
+
+The quantization process:
+1. Automatically converts model weights to 4-bit precision
+2. Excludes the VAE by default to maintain output quality
+3. Applies to transformer blocks and embedders (configurable)
+4. Performs on-the-fly dequantization during computation
+
+### Quantization Parameters
+
+- **enable-quantization**: Enable weight quantization
+- **quantization-bits**: Number of bits (default: 4)
+- **exclude-from-quantization**: List of modules to exclude from quantization
+  - Default excludes VAE to preserve quality
+  - Can exclude: vae, embedders, transformer
 
 ## Environment Variables
 
