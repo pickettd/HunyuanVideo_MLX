@@ -1,4 +1,5 @@
 import mlx.core as mx
+import mlx.nn as nn
 import numpy as np
 from typing import Dict, Any, Tuple
 
@@ -51,7 +52,7 @@ def dequantize_weight(quantized: mx.array, params: Dict[str, Any]) -> mx.array:
     """
     return (quantized - params["zero_point"]) * params["scale"]
 
-class QuantizedLinear(mx.nn.Linear):
+class QuantizedLinear(nn.Linear):
     """Quantized linear layer implementation."""
     
     def __init__(self, weight, bias=None, bits=4):
@@ -77,7 +78,7 @@ def quantize_model_weights(model: Any, bits: int = 4) -> None:
         bits: Number of bits for quantization
     """
     for name, module in model.named_modules():
-        if isinstance(module, mx.nn.Linear):
+        if isinstance(module, nn.Linear):
             # Replace linear layer with quantized version
             setattr(
                 model,
