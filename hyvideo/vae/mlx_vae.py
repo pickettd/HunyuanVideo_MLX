@@ -1,5 +1,6 @@
 import mlx.core as mx
 import mlx.nn as nn
+import numpy as np
 from typing import Optional, Dict, Any
 
 def to_mlx(tensor):
@@ -34,7 +35,7 @@ class MLXVAE:
         # Convert MLX array to PyTorch tensor for encoding
         import torch
         if not isinstance(x, torch.Tensor):
-            x = torch.from_numpy(x.tolist())
+            x = torch.from_numpy(np.array(x.numpy()))
             if torch.backends.mps.is_available():
                 x = x.to("mps")
         
@@ -68,7 +69,7 @@ class MLXVAE:
         # Convert MLX array to PyTorch tensor for decoding
         import torch
         if not isinstance(z, torch.Tensor):
-            z = torch.from_numpy(z.tolist())
+            z = torch.from_numpy(np.array(z.numpy()))
             if torch.backends.mps.is_available():
                 z = z.to("mps")
         
