@@ -35,7 +35,8 @@ class MLXVAE:
         # Convert MLX array to PyTorch tensor for encoding
         import torch
         if not isinstance(x, torch.Tensor):
-            x = torch.from_numpy(np.array(x.numpy()))
+            # Convert MLX array to numpy array first
+            x = torch.from_numpy(x.astype(mx.float32).tolist())
             if torch.backends.mps.is_available():
                 x = x.to("mps")
         
@@ -69,7 +70,8 @@ class MLXVAE:
         # Convert MLX array to PyTorch tensor for decoding
         import torch
         if not isinstance(z, torch.Tensor):
-            z = torch.from_numpy(np.array(z.numpy()))
+            # Convert MLX array to numpy array first
+            z = torch.from_numpy(z.astype(mx.float32).tolist())
             if torch.backends.mps.is_available():
                 z = z.to("mps")
         
